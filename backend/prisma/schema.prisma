@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String?
+  createdAt DateTime @default(now())
+  sessions  Session[]
+  feedbacks Feedback[]
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  subject    String
+  company    String?
+  difficulty String
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+  score      Float?
+  user       User      @relation(fields: [userId], references: [id])
+  feedbacks  Feedback[]
+  questions  Question[]
+}
+
+model Question {
+  id         String   @id @default(cuid())
+  sessionId  String
+  text       String
+  createdAt  DateTime @default(now())
+  session    Session  @relation(fields: [sessionId], references: [id])
+  feedback   Feedback?
+}
+
+model Feedback {
+  id         String   @id @default(cuid())
+  sessionId  String
+  userId     String
+  questionId String?
+  score      Int
+  feedback   String
+  createdAt  DateTime @default(now())
+  session    Session @relation(fields: [sessionId], references: [id])
+  user       User    @relation(fields: [userId], references: [id])
+  question   Question? @relation(fields: [questionId], references: [id])
+}

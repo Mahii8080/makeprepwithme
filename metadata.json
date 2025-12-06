@@ -1,0 +1,8 @@
+{
+  "name": "Copy of MakePrepWithMe: AI Interview Coach",
+  "description": "An AI-powered smart interview and exam preparation bot. Practice for tech interviews, competitive exams, and improve your English speaking skills with real-time feedback from a virtual AI avatar.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
