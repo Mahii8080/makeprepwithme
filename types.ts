@@ -72,4 +72,5 @@ export interface ProfileData {
   lastSessionDate: string | null;
   badges: string[];
   subjectStats: { [key in Subject]?: number };
+  resumeText?: string;
 }

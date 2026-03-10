@@ -62,19 +62,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onGetStarted }) => {
           <h1 className="text-5xl md:text-7xl font-bold text-white mb-4 animate-fade-in-down">
             MakePrepWithMe
           </h1>
-          <p className="text-lg md:text-2xl text-blue-300 mb-8 animate-fade-in-up">
+          <p className="text-lg md:text-2xl text-blue-300 mb-12 animate-fade-in-up">
             Your Personal AI Interview Coach
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
               onClick={() => setMode('login')}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg shadow-blue-600/50 transform hover:scale-105 transition-all duration-300"
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg shadow-blue-600/50 transform hover:scale-105 transition-all duration-300 min-w-[150px]"
             >
               Login
             </button>
             <button
               onClick={() => setMode('register')}
-              className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg shadow-green-600/50 transform hover:scale-105 transition-all duration-300"
+              className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg shadow-green-600/50 transform hover:scale-105 transition-all duration-300 min-w-[150px]"
             >
               Register
             </button>

@@ -65,7 +65,7 @@ const isYesterday = (date1: Date, date2: Date): boolean => {
 }
 
 
-export const updateProfileOnSessionEnd = (subject: Subject, score: number) => {
+export const updateProfileOnSessionEnd = (subject: Subject | string, score: number) => {
   const profile = getProfileData();
 
   // Update core stats
@@ -74,7 +74,10 @@ export const updateProfileOnSessionEnd = (subject: Subject, score: number) => {
   profile.averageScore = (totalScore + score) / profile.interviewsCompleted;
   
   // Update subject stats
-  profile.subjectStats[subject] = (profile.subjectStats[subject] || 0) + 1;
+  if (typeof subject === 'string') {
+      const subj = subject as Subject;
+      profile.subjectStats[subj] = (profile.subjectStats[subj] || 0) + 1;
+  }
 
   // Update streak
   const today = new Date();
@@ -99,13 +102,14 @@ export const updateProfileOnSessionEnd = (subject: Subject, score: number) => {
   
   // Award badges
   allBadges.forEach(badge => {
-    if (!profile.badges.includes(badge.name) && badge.condition(profile, subject, score)) {
+    if (!profile.badges.includes(badge.name) && badge.condition(profile, subject as Subject, score)) {
         profile.badges.push(badge.name);
     }
   });
 
   saveProfileData(profile);
 };
+
 
 
 // For displaying in the profile screen
@@ -116,3 +120,10 @@ export const getAllBadges = (): (Badge & { earned: boolean })[] => {
         earned: profile.badges.includes(badge.name)
     }));
 }
+
+export const updateResume = (text: string) => {
+    const profile = getProfileData();
+    profile.resumeText = text;
+    saveProfileData(profile);
+}
+

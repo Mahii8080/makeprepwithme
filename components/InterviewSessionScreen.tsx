@@ -2,8 +2,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Subject, ChatMessage, Feedback, Difficulty } from '../types';
 import { generateQuestion, evaluateAnswer } from '../services/geminiService';
-import { updateProfileOnSessionEnd } from '../services/profileService';
+import { updateProfileOnSessionEnd, getProfileData } from '../services/profileService';
 import { Avatar, AvatarState } from './Avatar';
+import { ThreeAvatar } from './ThreeAvatar';
 import { MicrophoneIcon } from './icons/MicrophoneIcon';
 import { SendIcon } from './icons/SendIcon';
 import { StopIcon } from './icons/StopIcon';
@@ -41,6 +42,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   const [isUserPresent, setIsUserPresent] = useState(true);
   const absentCountRef = useRef(0);
   const [absentLimitReached, setAbsentLimitReached] = useState(false);
+  const [usePhotoMode, setUsePhotoMode] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouthShapeIndex = useRef(0);
@@ -80,13 +82,13 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     return new Promise<void>((resolve) => {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.onstart = () => setAvatarState('speaking');
-      
+
       // Dynamically change mouth shape during speech for a lip-sync effect
       utterance.onboundary = (event) => {
         if (event.name === 'word') {
-             mouthShapeIndex.current = (mouthShapeIndex.current + 1) % speakingAvatarStates.length;
-             const nextShape = speakingAvatarStates[mouthShapeIndex.current];
-             setAvatarState(nextShape);
+          mouthShapeIndex.current = (mouthShapeIndex.current + 1) % speakingAvatarStates.length;
+          const nextShape = speakingAvatarStates[mouthShapeIndex.current];
+          setAvatarState(nextShape);
         }
       };
 
@@ -101,16 +103,16 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       window.speechSynthesis.speak(utterance);
     });
   }, []);
-  
+
   const startNewTurn = useCallback(async () => {
     setShowNextQuestionButton(false);
     setIsLoading(true);
-    setAvatarState('thinking');
-    const question = await generateQuestion(subject, difficulty, previousQuestionsRef.current);
-    
+    const resumeText = getProfileData().resumeText;
+    const question = await generateQuestion(subject, difficulty, previousQuestionsRef.current, resumeText);
+
     // Track this question to avoid repetition in future calls
     previousQuestionsRef.current.push(question);
-    
+
     setMessages(prev => [...prev, { role: 'model', text: question }]);
     setIsLoading(false);
     await speak(question);
@@ -119,15 +121,15 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
 
   const captureFrame = (): string | null => {
     if (videoRef.current && canvasRef.current && videoRef.current.readyState >= 2) { // Ensure video data is available
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            return canvas.toDataURL('image/jpeg', 0.8); // 80% quality
-        }
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', 0.8); // 80% quality
+      }
     }
     return null;
   };
@@ -139,47 +141,47 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     setUserInput('');
     setIsLoading(true);
     setAvatarState('thinking');
-    
+
     const lastQuestion = [...messages].reverse().find(m => m.role === 'model')?.text;
     if (!lastQuestion) {
-        console.error("Could not find the last question.");
-        setIsLoading(false);
-        return;
+      console.error("Could not find the last question.");
+      setIsLoading(false);
+      return;
     }
-    
+
     const userMessage: ChatMessage = { role: 'user', text: currentInput };
     setMessages(prev => [...prev, userMessage]);
-    
+
     const imageB64Data = difficulty === 'Advanced' ? captureFrame() : null;
     const feedback: Feedback = await evaluateAnswer(lastQuestion, currentInput, subject, difficulty, imageB64Data);
-    
+
     if (!feedback.error) {
-        sessionScores.current.push(feedback.score);
+      sessionScores.current.push(feedback.score);
     }
 
     // Set avatar reaction based on score
     if (feedback.error) {
-        setAvatarState('confused');
+      setAvatarState('confused');
     } else if (feedback.score >= 8) {
-        setAvatarState('happy');
+      setAvatarState('happy');
     } else if (feedback.score >= 5) {
-        setAvatarState('encouraging');
+      setAvatarState('encouraging');
     } else {
-        setAvatarState('serious');
+      setAvatarState('serious');
     }
 
     // Brief pause to show the reaction before speaking
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     const feedbackMessage: ChatMessage = {
-        role: 'system',
-        text: 'Here is your feedback:',
-        feedback: feedback
+      role: 'system',
+      text: 'Here is your feedback:',
+      feedback: feedback
     };
     setMessages(prev => [...prev, feedbackMessage]);
-    
+
     await speak(feedback.feedback + (feedback.nonVerbalFeedback ? ` Now, regarding your on-camera presence... ${feedback.nonVerbalFeedback}` : ''));
-    
+
     setIsLoading(false);
     setAvatarState('idle');
     setShowNextQuestionButton(true);
@@ -195,10 +197,10 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     };
     setMessages([initialMessage]);
     startNewTurn();
-    
+
     return () => {
-        // Cleanup speech synthesis on component unmount
-        window.speechSynthesis.cancel();
+      // Cleanup speech synthesis on component unmount
+      window.speechSynthesis.cancel();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -230,10 +232,10 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
           .map((result) => result.transcript)
           .join('');
         setUserInput(transcript);
-        
+
         const lastResult = event.results[event.results.length - 1];
         if (lastResult.isFinal) {
-            handleSubmit(transcript);
+          handleSubmit(transcript);
         }
       };
       recognitionRef.current = recognition;
@@ -288,8 +290,31 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
           {/* Left: Avatar and state */}
           <div className="flex-1 flex items-center justify-center">
             <div className="max-w-lg w-full flex flex-col items-center">
-              <Avatar state={avatarState} sizeClassName="w-40 h-40 md:w-56 md:h-56" />
-              <p className="mt-4 text-gray-300 text-center">
+              <div className="w-full max-w-sm aspect-[3/4] bg-blue-900/10 rounded-xl border border-blue-500/20 shadow-2xl overflow-hidden backdrop-blur-md relative group">
+                <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none"></div>
+                {usePhotoMode ? (
+                  <img
+                    src="/cartoon-3d-avatar.png"
+                    alt="AI Interviewer"
+                    className="w-full h-full object-cover transition-opacity duration-500"
+                  />
+                ) : (
+                  <ThreeAvatar state={avatarState} />
+                )}
+                <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent flex justify-between items-end">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${avatarState !== 'idle' ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></div>
+                    <span className="text-xs font-semibold text-blue-200 tracking-wider uppercase">AI Interviewer</span>
+                  </div>
+                  <button
+                    onClick={() => setUsePhotoMode(!usePhotoMode)}
+                    className="text-[10px] bg-blue-600/40 hover:bg-blue-600/60 text-white px-2 py-1 rounded border border-blue-400/30 transition-colors"
+                  >
+                    {usePhotoMode ? 'Switch to 3D' : 'Ultra Realistic'}
+                  </button>
+                </div>
+              </div>
+              <p className="mt-4 text-gray-300 text-center font-medium tracking-wide">
                 {avatarState.charAt(0).toUpperCase() + avatarState.slice(1).replace(/_./g, c => ' ' + c[1].toUpperCase())}...
               </p>
             </div>
@@ -325,23 +350,23 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
           )}
 
           <div className="text-center text-white text-lg sm:text-xl md:text-2xl font-medium mb-4 h-24 p-2 flex items-center justify-center">
-            {isLoading ? <span className="animate-pulse">...</span> : 
-             isListening ? <span className="text-gray-400 italic">{userInput || "Listening..."}</span> :
-             showNextQuestionButton ? 'Review your feedback.' : ' '
+            {isLoading ? <span className="animate-pulse">...</span> :
+              isListening ? <span className="text-gray-400 italic">{userInput || "Listening..."}</span> :
+                showNextQuestionButton ? 'Review your feedback.' : ' '
             }
           </div>
 
           {/* Controls */}
           <div className="flex items-center justify-center">
             <button onClick={toggleListen} disabled={isInteractionDisabled || showNextQuestionButton} className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-all transform hover:scale-110 ${isListening ? 'bg-red-500' : 'bg-blue-600 hover:bg-blue-500'} disabled:bg-gray-600 disabled:cursor-not-allowed`}>
-              {isListening ? <StopIcon className="w-8 h-8 sm:w-10 sm:h-10 text-white" /> : <MicrophoneIcon className="w-8 h-8 sm:w-10 sm:h-10 text-white"/>}
+              {isListening ? <StopIcon className="w-8 h-8 sm:w-10 sm:h-10 text-white" /> : <MicrophoneIcon className="w-8 h-8 sm:w-10 sm:h-10 text-white" />}
             </button>
           </div>
           <p className="text-gray-500 mt-2 text-sm h-5">
             {showNextQuestionButton ? 'Click "Next Question" to continue' : isListening ? '' : 'Press the button to speak'}
           </p>
         </div>
-        
+
         {/* Feedback Modal */}
         {feedbackToShow && showNextQuestionButton && (
           <div className="absolute inset-0 bg-black bg-opacity-80 flex items-center justify-center z-30 animate-fade-in-up p-4">
@@ -361,18 +386,17 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       </div>
     );
   }
-  
+
   return (
     <div className="flex flex-col h-screen p-4 bg-gray-900 relative">
       <header className="flex justify-between items-center mb-4">
         <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-white">{subject}</h1>
-            <span className={`text-sm font-semibold px-2 py-1 rounded-md ${
-                difficulty === 'Beginner' ? 'bg-green-600' :
-                difficulty === 'Intermediate' ? 'bg-yellow-600' : 'bg-red-600'
+          <h1 className="text-xl sm:text-2xl font-bold text-white">{subject}</h1>
+          <span className={`text-sm font-semibold px-2 py-1 rounded-md ${difficulty === 'Beginner' ? 'bg-green-600' :
+            difficulty === 'Intermediate' ? 'bg-yellow-600' : 'bg-red-600'
             }`}>{difficulty}</span>
         </div>
-        <button 
+        <button
           onClick={handleEndSessionClick}
           className="bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
           End Session
@@ -381,9 +405,32 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       <div className="flex-1 flex flex-col gap-4 overflow-hidden">
         <div className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
           <div className="w-full md:w-1/3 flex flex-col items-center justify-center bg-gray-800 rounded-lg p-4 space-y-4">
-            <Avatar state={avatarState} sizeClassName="w-36 h-36 md:w-48 md:h-48" />
+            <div className="w-full max-w-xs aspect-[3/4] bg-blue-900/10 rounded-xl border border-blue-500/20 overflow-hidden shadow-xl relative">
+              <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none"></div>
+              {usePhotoMode ? (
+                <img
+                  src="/cartoon-3d-avatar.png"
+                  alt="AI Mentor"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <ThreeAvatar state={avatarState} />
+              )}
+              <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent flex justify-between items-end">
+                <div className="flex items-center gap-2 px-1">
+                  <div className={`w-1.5 h-1.5 rounded-full ${avatarState !== 'idle' ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></div>
+                  <span className="text-[10px] font-semibold text-blue-200 tracking-wider uppercase">AI Mentor</span>
+                </div>
+                <button
+                  onClick={() => setUsePhotoMode(!usePhotoMode)}
+                  className="text-[8px] bg-blue-600/30 hover:bg-blue-600/50 text-white px-1.5 py-0.5 rounded border border-blue-400/20 transition-colors"
+                >
+                  {usePhotoMode ? '3D' : 'Realistic'}
+                </button>
+              </div>
+            </div>
             <p className="mt-4 text-gray-400 text-center animate-pulse h-6">
-                {avatarState.charAt(0).toUpperCase() + avatarState.slice(1).replace(/_./g, c => ' ' + c[1].toUpperCase())}...
+              {avatarState.charAt(0).toUpperCase() + avatarState.slice(1).replace(/_./g, c => ' ' + c[1].toUpperCase())}...
             </p>
             {/* Hidden canvas is required for advanced mode frame captures, but is not used here */}
             <canvas ref={canvasRef} className="hidden"></canvas>
@@ -393,30 +440,29 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
               {messages.map((msg, index) => (
                 <div key={index} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.feedback ? (
-                      <div className="w-full">
-                          <FeedbackCard feedback={msg.feedback} />
-                          {showNextQuestionButton && (
-                              <div className="flex justify-center mt-4">
-                                  <button
-                                      onClick={startNewTurn}
-                                      className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full transition-colors"
-                                  >
-                                      Next Question
-                                  </button>
-                              </div>
-                          )}
-                      </div>
+                    <div className="w-full">
+                      <FeedbackCard feedback={msg.feedback} />
+                      {showNextQuestionButton && (
+                        <div className="flex justify-center mt-4">
+                          <button
+                            onClick={startNewTurn}
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full transition-colors"
+                          >
+                            Next Question
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ) : (
-                    <div className={`max-w-xl p-3 rounded-lg ${
-                      msg.role === 'user' ? 'bg-blue-600 text-white' : 
+                    <div className={`max-w-xl p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' :
                       msg.role === 'model' ? 'bg-gray-700 text-gray-200' : 'bg-transparent text-center w-full text-gray-400 italic'
-                    }`}>
+                      }`}>
                       {msg.text}
                     </div>
                   )}
                 </div>
               ))}
-               {isLoading && <div className="flex justify-start"><div className="bg-gray-700 text-gray-200 p-3 rounded-lg">...</div></div>}
+              {isLoading && <div className="flex justify-start"><div className="bg-gray-700 text-gray-200 p-3 rounded-lg">...</div></div>}
               <div ref={chatEndRef} />
             </div>
             <div className="p-4 border-t border-gray-700 flex items-center gap-2">

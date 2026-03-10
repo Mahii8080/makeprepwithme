@@ -88,9 +88,10 @@ const visualFeedbackSchema = {
 };
 
 
-const getQuestionGenerationPrompt = (subject: Subject | string, difficulty: Difficulty, previousQuestions: string[] = []): string => {
+const getQuestionGenerationPrompt = (subject: Subject | string, difficulty: Difficulty, previousQuestions: string[] = [], resumeText?: string): string => {
     let persona: string;
     let examContext: string = '';
+    let resumeContext: string = '';
     let avoidRepetitionContext: string = '';
     const isHrInterview = /hr/i.test(subject);
 
@@ -104,6 +105,11 @@ const getQuestionGenerationPrompt = (subject: Subject | string, difficulty: Diff
     // Add context about previously asked questions to avoid repetition
     if (previousQuestions.length > 0) {
         avoidRepetitionContext = `\n\nIMPORTANT: Do NOT ask any of these previously asked questions:\n${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nAsk a completely different and new question.`;
+    }
+
+    // Add resume context if available
+    if (resumeText) {
+        resumeContext = `\n\nThe candidate's resume/profile is as follows:\n"""\n${resumeText}\n"""\n\nBase your questions on the technologies, projects, and experiences mentioned in this resume. `;
     }
 
     // Special handling for companies
@@ -139,7 +145,7 @@ const getQuestionGenerationPrompt = (subject: Subject | string, difficulty: Diff
     }
     // Make the instruction explicit to avoid multi-question outputs
     // Request a strict JSON reply to force a single, machine-parsable question
-    return `${persona} ${examContext}The topic is '${subject}'. 
+    return `${persona} ${examContext}${resumeContext}The topic is '${subject}'. 
 
 IMPORTANT: Ask EXACTLY ONE interview question only. Do not ask multiple questions, sub-questions, or follow-up questions. Do not include any numbering, bullets, introductions, or additional commentary.
 
@@ -147,9 +153,9 @@ CRITICAL: Return ONLY a JSON object with a single property named "question". Exa
 };
 
 
-export const generateQuestion = async (subject: Subject | string, difficulty: Difficulty, previousQuestions: string[] = []): Promise<string> => {
+export const generateQuestion = async (subject: Subject | string, difficulty: Difficulty, previousQuestions: string[] = [], resumeText?: string): Promise<string> => {
     try {
-        const prompt = getQuestionGenerationPrompt(subject, difficulty, previousQuestions);
+        const prompt = getQuestionGenerationPrompt(subject, difficulty, previousQuestions, resumeText);
         const response = await getAi().models.generateContent({
             model,
             contents: prompt,
@@ -280,7 +286,7 @@ export const askCustomQuestion = async (question: string, subject: Subject | str
     }
 };
 
-const getEvaluationPrompt = (question: string, answer: string, subject: Subject, difficulty: Difficulty, withVisualAnalysis: boolean): string => {
+const getEvaluationPrompt = (question: string, answer: string, subject: Subject | string, difficulty: Difficulty, withVisualAnalysis: boolean): string => {
     let evaluationCriteria: string;
     let examContext: string = '';
 
@@ -324,7 +330,7 @@ const getEvaluationPrompt = (question: string, answer: string, subject: Subject,
 };
 
 
-export const evaluateAnswer = async (question: string, answer: string, subject: Subject, difficulty: Difficulty, imageB64Data?: string | null): Promise<Feedback> => {
+export const evaluateAnswer = async (question: string, answer: string, subject: Subject | string, difficulty: Difficulty, imageB64Data?: string | null): Promise<Feedback> => {
     try {
         const withVisualAnalysis = difficulty === 'Advanced' && !!imageB64Data;
         const schema = withVisualAnalysis ? visualFeedbackSchema : baseFeedbackSchema;

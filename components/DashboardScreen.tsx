@@ -4,6 +4,7 @@ import { Subject, Difficulty, Company, ChatMessage } from '../types';
 import { askCustomQuestion } from '../services/geminiService';
 import { MicrophoneIcon } from './icons/MicrophoneIcon';
 import { StopIcon } from './icons/StopIcon';
+import { getProfileData } from '../services/profileService';
 
 declare global {
   interface Window {
@@ -242,15 +243,44 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
             <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-6 border-b-2 border-gray-700 pb-3">{companies[0].title}</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {companies[0].items.map((company) => (
-                <button
-                  key={company.name}
-                  onClick={() => setSelectedCompany(company.name)}
-                  className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-green-800/50 hover:border-green-600 transition-all duration-300 transform hover:-translate-y-1"
-                >
+                  <button
+                    key={company.name}
+                    onClick={() => setSelectedCompany(company.name as Company)}
+                    className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-green-800/50 hover:border-green-600 transition-all duration-300 transform hover:-translate-y-1"
+                  >
                   <div className="text-4xl sm:text-5xl mb-3 transition-transform duration-300 group-hover:scale-110">{company.icon}</div>
                   <h3 className="text-base sm:text-lg font-semibold text-white">{company.name}</h3>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Resume-based Interview Section */}
+          <div className="bg-gradient-to-r from-blue-700/40 to-purple-800/40 border border-blue-500/30 rounded-xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -mr-32 -mt-32 group-hover:bg-blue-500/20 transition-all duration-500"></div>
+            <div className="relative z-10 flex-1">
+                <h2 className="text-3xl font-bold text-white mb-2">Resume-based Interview</h2>
+                <p className="text-lg text-blue-100/80 mb-6 max-w-xl">
+                    Experience a personalized interview tailored specifically to your background, skills, and projects. 
+                    {getProfileData().resumeText ? ' Your resume is ready!' : ' (Go to profile to add your resume)'}
+                </p>
+                <button
+                    onClick={() => {
+                        const resume = getProfileData().resumeText;
+                        if (resume) {
+                            setSelectedSubject('Resume Interview' as any);
+                        } else {
+                            alert('Please add your resume in the Profile section first.');
+                            onViewProfile();
+                        }
+                    }}
+                    className={`bg-white text-blue-900 font-bold py-3 px-8 rounded-full shadow-lg hover:bg-blue-50 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2 ${!getProfileData().resumeText ? 'opacity-75 cursor-not-allowed' : ''}`}
+                >
+                    <span className="text-xl">📄</span> Start Personalized Interview
+                </button>
+            </div>
+            <div className="relative z-10 text-8xl md:text-9xl opacity-80 animate-bounce-slow">
+              👤
             </div>
           </div>
 
@@ -297,7 +327,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
                 disabled={isCustomLoading}
               />
               <button
-                onClick={handleCustomAsk}
+                onClick={() => handleCustomAsk()}
                 disabled={!customInput.trim() || isCustomLoading}
                 className="px-4 py-3 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed"
               >
