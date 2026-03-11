@@ -16,6 +16,7 @@ declare global {
 interface DashboardScreenProps {
   onStartInterview: (subject: Subject | string, difficulty: Difficulty) => void;
   onViewProfile: () => void;
+  onNavigateToResumeScanner: () => void;
 }
 
 interface SubjectItem {
@@ -96,36 +97,36 @@ const companies: CompaniesGroup[] = [
 ];
 
 const DifficultyModal: React.FC<{
-    subject: string;
-    onSelect: (difficulty: Difficulty) => void;
-    onClose: () => void;
+  subject: string;
+  onSelect: (difficulty: Difficulty) => void;
+  onClose: () => void;
 }> = ({ subject, onSelect, onClose }) => {
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in-up">
-            <div className="bg-gray-800 rounded-lg p-8 shadow-xl max-w-sm w-full text-center border border-gray-700">
-                <h2 className="text-2xl font-bold text-white mb-2">Select Difficulty</h2>
-                <p className="text-lg text-gray-300 mb-6">for <span className="font-bold text-blue-400">{subject}</span></p>
-                <div className="flex flex-col space-y-4">
-                    <button onClick={() => onSelect('Beginner')} className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-lg transition-transform transform hover:scale-105">
-                        Beginner
-                    </button>
-                    <button onClick={() => onSelect('Intermediate')} className="w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 px-4 rounded-lg transition-transform transform hover:scale-105">
-                        Intermediate
-                    </button>
-                    <button onClick={() => onSelect('Advanced')} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-4 rounded-lg transition-transform transform hover:scale-105">
-                        Advanced
-                    </button>
-                </div>
-                <button onClick={onClose} className="mt-6 text-gray-400 hover:text-white transition-colors">
-                    Cancel
-                </button>
-            </div>
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in-up">
+      <div className="bg-gray-800 rounded-lg p-8 shadow-xl max-w-sm w-full text-center border border-gray-700">
+        <h2 className="text-2xl font-bold text-white mb-2">Select Difficulty</h2>
+        <p className="text-lg text-gray-300 mb-6">for <span className="font-bold text-blue-400">{subject}</span></p>
+        <div className="flex flex-col space-y-4">
+          <button onClick={() => onSelect('Beginner')} className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-lg transition-transform transform hover:scale-105">
+            Beginner
+          </button>
+          <button onClick={() => onSelect('Intermediate')} className="w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 px-4 rounded-lg transition-transform transform hover:scale-105">
+            Intermediate
+          </button>
+          <button onClick={() => onSelect('Advanced')} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-4 rounded-lg transition-transform transform hover:scale-105">
+            Advanced
+          </button>
         </div>
-    );
+        <button onClick={onClose} className="mt-6 text-gray-400 hover:text-white transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 };
 
 
-const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onViewProfile }) => {
+const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onViewProfile, onNavigateToResumeScanner }) => {
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [customMessages, setCustomMessages] = useState<ChatMessage[]>([]);
@@ -185,7 +186,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
           .map((result) => result.transcript)
           .join('');
         setCustomInput(transcript);
-        
+
         const lastResult = event.results[event.results.length - 1];
         if (lastResult.isFinal) {
           handleCustomAsk(transcript);
@@ -209,15 +210,23 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
       <div className="min-h-screen p-4 sm:p-8 flex flex-col items-center w-full">
         <header className="w-full max-w-6xl flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 sm:mb-12 gap-4 sm:gap-0">
           <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Welcome Back!</h1>
-              <p className="text-md sm:text-lg text-gray-400">Choose your preparation module to get started.</p>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Welcome Back!</h1>
+            <p className="text-md sm:text-lg text-gray-400">Choose your preparation module to get started.</p>
           </div>
-          <button
+          <div className="flex flex-wrap gap-2 sm:gap-4 self-start sm:self-auto">
+            <button
+              onClick={onNavigateToResumeScanner}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <span>📄</span> AI Resume Scanner
+            </button>
+            <button
               onClick={onViewProfile}
-              className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors self-start sm:self-auto"
-          >
+              className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            >
               View Profile
-          </button>
+            </button>
+          </div>
         </header>
         <div className="w-full max-w-6xl space-y-12">
           {categories.map((category) => (
@@ -243,11 +252,11 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
             <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-6 border-b-2 border-gray-700 pb-3">{companies[0].title}</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {companies[0].items.map((company) => (
-                  <button
-                    key={company.name}
-                    onClick={() => setSelectedCompany(company.name as Company)}
-                    className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-green-800/50 hover:border-green-600 transition-all duration-300 transform hover:-translate-y-1"
-                  >
+                <button
+                  key={company.name}
+                  onClick={() => setSelectedCompany(company.name as Company)}
+                  className="group bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-green-800/50 hover:border-green-600 transition-all duration-300 transform hover:-translate-y-1"
+                >
                   <div className="text-4xl sm:text-5xl mb-3 transition-transform duration-300 group-hover:scale-110">{company.icon}</div>
                   <h3 className="text-base sm:text-lg font-semibold text-white">{company.name}</h3>
                 </button>
@@ -255,34 +264,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
             </div>
           </div>
 
-          {/* Resume-based Interview Section */}
-          <div className="bg-gradient-to-r from-blue-700/40 to-purple-800/40 border border-blue-500/30 rounded-xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -mr-32 -mt-32 group-hover:bg-blue-500/20 transition-all duration-500"></div>
-            <div className="relative z-10 flex-1">
-                <h2 className="text-3xl font-bold text-white mb-2">Resume-based Interview</h2>
-                <p className="text-lg text-blue-100/80 mb-6 max-w-xl">
-                    Experience a personalized interview tailored specifically to your background, skills, and projects. 
-                    {getProfileData().resumeText ? ' Your resume is ready!' : ' (Go to profile to add your resume)'}
-                </p>
-                <button
-                    onClick={() => {
-                        const resume = getProfileData().resumeText;
-                        if (resume) {
-                            setSelectedSubject('Resume Interview' as any);
-                        } else {
-                            alert('Please add your resume in the Profile section first.');
-                            onViewProfile();
-                        }
-                    }}
-                    className={`bg-white text-blue-900 font-bold py-3 px-8 rounded-full shadow-lg hover:bg-blue-50 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2 ${!getProfileData().resumeText ? 'opacity-75 cursor-not-allowed' : ''}`}
-                >
-                    <span className="text-xl">📄</span> Start Personalized Interview
-                </button>
-            </div>
-            <div className="relative z-10 text-8xl md:text-9xl opacity-80 animate-bounce-slow">
-              👤
-            </div>
-          </div>
+
 
           <div className="bg-gray-800/70 border border-gray-700 rounded-xl p-6 shadow-lg">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
@@ -340,13 +322,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
               )}
               {customMessages.map((msg, index) => (
                 <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-3xl text-sm p-3 rounded-lg ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : msg.role === 'system'
-                        ? 'bg-yellow-700 text-white'
-                        : 'bg-gray-700 text-gray-100'
-                  }`}>
+                  <div className={`max-w-3xl text-sm p-3 rounded-lg ${msg.role === 'user'
+                    ? 'bg-blue-600 text-white'
+                    : msg.role === 'system'
+                      ? 'bg-yellow-700 text-white'
+                      : 'bg-gray-700 text-gray-100'
+                    }`}>
                     {msg.text}
                   </div>
                 </div>

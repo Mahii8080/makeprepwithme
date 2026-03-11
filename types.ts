@@ -32,21 +32,21 @@ export enum Company {
   Apple = "Apple",
   Meta = "Meta",
   Netflix = "Netflix",
-  
+
   // Indian IT Companies
   TCS = "TCS (Tata Consultancy Services)",
   Infosys = "Infosys",
   Wipro = "Wipro",
   HCL = "HCL Technologies",
   Cognizant = "Cognizant",
-  
+
   // Other Companies
   IBM = "IBM",
   Oracle = "Oracle",
   Accenture = "Accenture",
 }
 
-export type View = "login" | "dashboard" | "session" | "profile";
+export type View = "login" | "dashboard" | "session" | "profile" | "resumeScanner";
 export type Difficulty = 'Beginner' | 'Intermediate' | 'Advanced';
 
 export interface ChatMessage {

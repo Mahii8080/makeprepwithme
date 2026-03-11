@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ProfileData, Subject } from '../types';
-import { getProfileData, getAllBadges, updateResume } from '../services/profileService';
+import { getProfileData, getAllBadges } from '../services/profileService';
 import { getCurrentUser, logoutUser } from '../services/authService';
 import { getUserFeedbacks, SessionFeedback } from '../services/feedbackService';
 import { FeedbackCard } from './FeedbackCard';
@@ -20,41 +20,40 @@ const StatCard: React.FC<{ label: string; value: string | number; icon: string }
     </div>
   </div>
 );
-  
+
 const BadgeDisplay: React.FC<{ badge: { name: string; description: string; icon: string; earned: boolean } }> = ({ badge }) => (
-    <div className={`bg-gray-800 p-4 rounded-lg text-center transition-all duration-300 ${badge.earned ? 'border-2 border-yellow-400' : 'opacity-40'}`}>
-        <div className={`text-5xl mx-auto mb-2 ${badge.earned ? '' : 'filter grayscale'}`}>{badge.icon}</div>
-        <h3 className="font-bold text-white">{badge.name}</h3>
-        <p className="text-xs text-gray-400">{badge.description}</p>
-    </div>
+  <div className={`bg-gray-800 p-4 rounded-lg text-center transition-all duration-300 ${badge.earned ? 'border-2 border-yellow-400' : 'opacity-40'}`}>
+    <div className={`text-5xl mx-auto mb-2 ${badge.earned ? '' : 'filter grayscale'}`}>{badge.icon}</div>
+    <h3 className="font-bold text-white">{badge.name}</h3>
+    <p className="text-xs text-gray-400">{badge.description}</p>
+  </div>
 );
 
 const SessionFeedbackSummary: React.FC<{ session: SessionFeedback }> = ({ session }) => (
-    <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-        <div className="flex justify-between items-start mb-3">
-            <div>
-                <h3 className="font-bold text-white text-lg">{session.subject}</h3>
-                <span className={`text-xs px-2 py-0.5 rounded ${
-                    session.difficulty === 'Beginner' ? 'bg-green-600/30 text-green-400' :
-                    session.difficulty === 'Intermediate' ? 'bg-yellow-600/30 text-yellow-400' : 'bg-red-600/30 text-red-400'
-                }`}>
-                    {session.difficulty}
-                </span>
-            </div>
-            <div className="text-right">
-                <div className="text-2xl font-bold text-blue-400">{session.averageScore.toFixed(1)}</div>
-                <div className="text-[10px] text-gray-500">{new Date(session.timestamp).toLocaleDateString()}</div>
-            </div>
-        </div>
-        <div className="space-y-4">
-            {session.feedbacks.map((f, i) => (
-                <div key={i} className="border-t border-gray-700 pt-3">
-                  <div className="text-xs font-semibold text-gray-400 mb-1">Q: {f.question}</div>
-                  <FeedbackCard feedback={f.feedback} />
-                </div>
-            ))}
-        </div>
+  <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+    <div className="flex justify-between items-start mb-3">
+      <div>
+        <h3 className="font-bold text-white text-lg">{session.subject}</h3>
+        <span className={`text-xs px-2 py-0.5 rounded ${session.difficulty === 'Beginner' ? 'bg-green-600/30 text-green-400' :
+          session.difficulty === 'Intermediate' ? 'bg-yellow-600/30 text-yellow-400' : 'bg-red-600/30 text-red-400'
+          }`}>
+          {session.difficulty}
+        </span>
+      </div>
+      <div className="text-right">
+        <div className="text-2xl font-bold text-blue-400">{session.averageScore.toFixed(1)}</div>
+        <div className="text-[10px] text-gray-500">{new Date(session.timestamp).toLocaleDateString()}</div>
+      </div>
     </div>
+    <div className="space-y-4">
+      {session.feedbacks.map((f, i) => (
+        <div key={i} className="border-t border-gray-700 pt-3">
+          <div className="text-xs font-semibold text-gray-400 mb-1">Q: {f.question}</div>
+          <FeedbackCard feedback={f.feedback} />
+        </div>
+      ))}
+    </div>
+  </div>
 );
 
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack, onLogout }) => {
@@ -105,47 +104,29 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack, onLogout }) => {
           )}
         </div>
       </header>
-      
+
       <div className="w-full max-w-5xl space-y-8">
         {/* Stats Grid */}
         <section>
-            <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-6 border-b-2 border-gray-700 pb-3">Statistics</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard label="Interviews Completed" value={profile.interviewsCompleted} icon="📈" />
-                <StatCard label="Average Score" value={profile.averageScore.toFixed(1)} icon="⭐" />
-                <StatCard label="Current Streak" value={profile.currentStreak} icon="🔥" />
-                <StatCard label="Longest Streak" value={profile.longestStreak} icon="🏅" />
-            </div>
+          <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-6 border-b-2 border-gray-700 pb-3">Statistics</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard label="Interviews Completed" value={profile.interviewsCompleted} icon="📈" />
+            <StatCard label="Average Score" value={profile.averageScore.toFixed(1)} icon="⭐" />
+            <StatCard label="Current Streak" value={profile.currentStreak} icon="🔥" />
+            <StatCard label="Longest Streak" value={profile.longestStreak} icon="🏅" />
+          </div>
         </section>
 
         {/* Badges Section */}
         <section>
-            <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-6 border-b-2 border-gray-700 pb-3">Badges</h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                {badges.map(badge => (
-                    <BadgeDisplay key={badge.name} badge={badge} />
-                ))}
-            </div>
+          <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-6 border-b-2 border-gray-700 pb-3">Badges</h2>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+            {badges.map(badge => (
+              <BadgeDisplay key={badge.name} badge={badge} />
+            ))}
+          </div>
         </section>
 
-
-        {/* Resume Section */}
-        <section>
-            <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-6 border-b-2 border-gray-700 pb-3">Your Resume</h2>
-            <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
-                <p className="text-sm text-gray-400 mb-4">Paste your resume text here to enable resume-based interview questions.</p>
-                <textarea 
-                    className="w-full h-80 bg-gray-900 border border-gray-700 text-gray-200 p-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                    placeholder="Paste your resume content here..."
-                    value={profile.resumeText || ''}
-                    onChange={(e) => {
-                        const newText = e.target.value;
-                        setProfile(prev => prev ? ({ ...prev, resumeText: newText }) : null);
-                        updateResume(newText);
-                    }}
-                />
-            </div>
-        </section>
 
         {/* Feedback History Section */}
         {currentUser && (

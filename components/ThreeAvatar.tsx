@@ -275,94 +275,43 @@ const HumanoidModel: React.FC<{ state: AvatarState }> = ({ state }) => {
           </group>
         </group>
 
-        {/* Hair - Messy */}
+        {/* Hair - Simple Clean Cut */}
         <group position={[0, 0.25, -0.05]}>
-          <Sphere args={[0.43, 24, 24]} scale={[1.05, 0.8, 1.1]}>
-            <meshStandardMaterial color={hairColor} />
-          </Sphere>
-          <Sphere args={[0.15, 12, 12]} position={[-0.1, 0.25, 0.2]}><meshStandardMaterial color={hairColor} /></Sphere>
-          <Sphere args={[0.12, 12, 12]} position={[0.15, 0.2, 0.25]}><meshStandardMaterial color={hairColor} /></Sphere>
-          <Sphere args={[0.14, 12, 12]} position={[0, 0.35, 0.1]}><meshStandardMaterial color={hairColor} /></Sphere>
-          <Sphere args={[0.1, 12, 12]} position={[-0.25, 0.15, 0.2]}><meshStandardMaterial color={hairColor} /></Sphere>
-          <Sphere args={[0.1, 12, 12]} position={[0.25, 0.15, 0.2]}><meshStandardMaterial color={hairColor} /></Sphere>
-        </group>
-
-        {/* Beard - Full Black Beard */}
-        <group position={[0, -0.18, 0.12]}>
-          {/* Jaw beard wrapping */}
-          <Sphere args={[0.42, 24, 24]} position={[0, 0.02, 0]} scale={[1.02, 0.6, 1.05]}>
+          {/* Main Hair Mass */}
+          <Sphere args={[0.42, 32, 32]} scale={[1.02, 0.85, 1.1]} position={[0, 0.05, 0]}>
             <meshStandardMaterial color={hairColor} roughness={0.9} />
           </Sphere>
-          {/* Mustache */}
-          <Box args={[0.25, 0.06, 0.1]} position={[0, 0.18, 0.35]}>
+          {/* Slight top parting volume */}
+          <Sphere args={[0.35, 24, 24]} scale={[1.0, 0.5, 1.1]} position={[0, 0.28, 0.1]}>
+            <meshStandardMaterial color={hairColor} roughness={0.9} />
+          </Sphere>
+          {/* Sideburns */}
+          <Box args={[0.08, 0.15, 0.08]} position={[-0.4, -0.15, 0.15]} rotation={[0, 0, -0.1]}>
             <meshStandardMaterial color={hairColor} roughness={0.9} />
           </Box>
-          <Sphere args={[0.12, 12, 12]} position={[0, -0.05, 0.32]} scale={[1.5, 1, 1]}>
+          <Box args={[0.08, 0.15, 0.08]} position={[0.4, -0.15, 0.15]} rotation={[0, 0, 0.1]}>
             <meshStandardMaterial color={hairColor} roughness={0.9} />
-          </Sphere>
+          </Box>
         </group>
+
+
       </group>
 
       {/* Arms - Multi-segment for better pose */}
       <group ref={leftArmRef} position={[-0.6, 1.8, 0]}>
-        {/* Upper Arm */}
+        {/* Upper Arm Only */}
         <Cylinder args={[0.12, 0.11, 0.6]} position={[0, -0.25, 0]} rotation={[0, 0, 0.1]}>
           <meshStandardMaterial color={jacketColor} />
         </Cylinder>
-        {/* Elbow Joint */}
-        <Sphere args={[0.1, 16, 16]} position={[0, -0.55, 0]}>
-          <meshStandardMaterial color={jacketColor} />
-        </Sphere>
-        {/* Forearm */}
-        <group position={[0, -0.55, 0]} rotation={[0.2, 0, 0]}>
-          <Cylinder args={[0.09, 0.08, 0.5]} position={[0, -0.3, 0]}>
-            <meshStandardMaterial color={jacketColor} />
-          </Cylinder>
-          {/* Hand */}
-          <group position={[0, -0.6, 0]}>
-            <Sphere args={[0.1, 16, 16]} castShadow scale={[0.8, 1, 1.1]}>
-              <meshStandardMaterial color={skinColor} />
-            </Sphere>
-          </group>
-        </group>
       </group>
 
       <group ref={rightArmRef} position={[0.6, 1.8, 0]}>
-        {/* Upper Arm */}
+        {/* Upper Arm Only */}
         <Cylinder args={[0.12, 0.11, 0.6]} position={[0, -0.25, 0]} rotation={[0, 0, -0.1]}>
           <meshStandardMaterial color={jacketColor} />
         </Cylinder>
-        {/* Elbow Joint */}
-        <Sphere args={[0.1, 16, 16]} position={[0, -0.55, 0]}>
-          <meshStandardMaterial color={jacketColor} />
-        </Sphere>
-        {/* Forearm */}
-        <group position={[0, -0.55, 0]} rotation={[0.2, 0, 0]}>
-          <Cylinder args={[0.09, 0.08, 0.5]} position={[0, -0.3, 0]}>
-            <meshStandardMaterial color={jacketColor} />
-          </Cylinder>
-          {/* Hand */}
-          <group position={[0, -0.6, 0]}>
-            <Sphere args={[0.11, 16, 16]} castShadow scale={[0.8, 1, 1.1]}>
-              <meshStandardMaterial color={skinColor} />
-            </Sphere>
-          </group>
-        </group>
       </group>
 
-      {/* Futuristic Desk */}
-      <group position={[0, 0.35, 0.55]}>
-        <Box args={[3.5, 0.1, 1.2]} castShadow>
-          <meshStandardMaterial color={deskColor} roughness={0.1} metalness={0.9} />
-        </Box>
-        <Box args={[3.52, 0.02, 1.22]} position={[0, 0, 0]}>
-          <meshBasicMaterial color={neonBlue} transparent opacity={0.3} />
-        </Box>
-        {/* Holographic interface detail */}
-        <Box args={[0.8, 0.01, 0.5]} position={[0, 0.06, 0.1]}>
-          <meshBasicMaterial color={neonBlue} transparent opacity={0.2} />
-        </Box>
-      </group>
     </group>
   );
 };
@@ -399,6 +348,7 @@ export const ThreeAvatar: React.FC<ThreeAvatarProps> = ({ state }) => {
         <OrbitControls
           enableZoom={false}
           enablePan={false}
+          target={[0, 0.5, 0]}
           minPolarAngle={Math.PI / 2.5}
           maxPolarAngle={Math.PI / 1.8}
           minAzimuthAngle={-Math.PI / 12}

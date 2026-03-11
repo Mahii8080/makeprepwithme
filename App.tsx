@@ -4,6 +4,7 @@ import LoginScreen from './components/LoginScreen';
 import DashboardScreen from './components/DashboardScreen';
 import InterviewSessionScreen from './components/InterviewSessionScreen';
 import ProfileScreen from './components/ProfileScreen';
+import ResumeScannerScreen from './components/ResumeScannerScreen';
 import { Subject, View, Difficulty } from './types';
 import { isLoggedIn } from './services/authService';
 
@@ -50,14 +51,16 @@ const App: React.FC = () => {
           />
         );
       case 'dashboard':
-        return <DashboardScreen onStartInterview={handleStartInterview} onViewProfile={() => setView('profile')} />;
+        return <DashboardScreen onStartInterview={handleStartInterview} onViewProfile={() => setView('profile')} onNavigateToResumeScanner={() => setView('resumeScanner')} />;
       case 'profile':
         return <ProfileScreen onBack={() => setView('dashboard')} onLogout={handleLogout} />;
       case 'session':
         if (currentSubject && currentDifficulty) {
           return <InterviewSessionScreen subject={currentSubject} difficulty={currentDifficulty} onEndSession={handleEndInterview} />;
         }
-        return <DashboardScreen onStartInterview={handleStartInterview} onViewProfile={() => setView('profile')} />;
+        return <DashboardScreen onStartInterview={handleStartInterview} onViewProfile={() => setView('profile')} onNavigateToResumeScanner={() => setView('resumeScanner')} />;
+      case 'resumeScanner':
+        return <ResumeScannerScreen onBack={() => setView('dashboard')} onStartInterview={handleStartInterview} />;
       default:
         return <LoginScreen onGetStarted={() => setView('dashboard')} />;
     }

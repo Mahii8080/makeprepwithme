@@ -44,7 +44,7 @@ const getAi = () => {
     return ai;
 };
 
-const model = 'gemini-2.5-flash';
+const model = 'gemini-1.5-flash';
 
 const questionSchema = {
     type: Type.OBJECT,
@@ -107,9 +107,8 @@ const getQuestionGenerationPrompt = (subject: Subject | string, difficulty: Diff
         avoidRepetitionContext = `\n\nIMPORTANT: Do NOT ask any of these previously asked questions:\n${previousQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nAsk a completely different and new question.`;
     }
 
-    // Add resume context if available
     if (resumeText) {
-        resumeContext = `\n\nThe candidate's resume/profile is as follows:\n"""\n${resumeText}\n"""\n\nBase your questions on the technologies, projects, and experiences mentioned in this resume. `;
+        resumeContext = `\n\nThe candidate's resume/profile is as follows:\n"""\n${resumeText}\n"""\n\nBase your questions on the technologies, projects, and experiences mentioned in this resume. If the subject is 'Resume Interview', ask exclusively about their resume. `;
     }
 
     // Special handling for companies
@@ -163,8 +162,7 @@ export const generateQuestion = async (subject: Subject | string, difficulty: Di
                 responseMimeType: "application/json",
                 responseSchema: questionSchema,
                 temperature: 0.6,
-                maxOutputTokens: 120,
-                thinkingConfig: { thinkingBudget: 0 }
+                maxOutputTokens: 250
             }
         });
 
@@ -254,13 +252,13 @@ export const generateQuestion = async (subject: Subject | string, difficulty: Di
         const question = candidateLine ? (candidateLine.endsWith('?') ? candidateLine : candidateLine + '?') : '';
 
         if (!question || question === '?') {
-            return "I'm having trouble coming up with a question right now. Let's try again in a moment.";
+            return "I'm having trouble coming up with a question right now. Let's try again in a moment. (Parsing failed)";
         }
 
         return question;
     } catch (error) {
         console.error("Error generating question:", error);
-        return "I'm having trouble coming up with a question right now. Let's try again in a moment.";
+        return `I'm having trouble coming up with a question right now. Let's try again in a moment. [Error: ${error instanceof Error ? error.message : String(error)}]`;
     }
 };
 
@@ -283,6 +281,32 @@ export const askCustomQuestion = async (question: string, subject: Subject | str
     } catch (error) {
         console.error("Error answering custom question:", error);
         return "Sorry, I hit a snag answering that. Please try again.";
+    }
+};
+
+export const analyzeResumeFile = async (base64Data: string, mimeType: string): Promise<string> => {
+    try {
+        const response = await getAi().models.generateContent({
+            model,
+            contents: {
+                parts: [
+                    { text: "Analyze this resume carefully. Extract all key skills, technologies, tools, and all mentioned projects with their descriptions. Return a well-formatted summary of what the candidate knows and has built, which an interviewer could use to ask questions." },
+                    {
+                        inlineData: {
+                            mimeType: mimeType,
+                            data: base64Data,
+                        },
+                    }
+                ]
+            },
+            config: {
+                temperature: 0.3,
+            }
+        });
+        return response.text.trim();
+    } catch (error) {
+        console.error("Error analyzing resume file:", error);
+        throw new Error("Failed to process the resume. Ensure it is a valid image or PDF.");
     }
 };
 
@@ -335,7 +359,7 @@ export const evaluateAnswer = async (question: string, answer: string, subject: 
         const withVisualAnalysis = difficulty === 'Advanced' && !!imageB64Data;
         const schema = withVisualAnalysis ? visualFeedbackSchema : baseFeedbackSchema;
         const prompt = getEvaluationPrompt(question, answer, subject, difficulty, withVisualAnalysis);
-        
+
         let requestContents: string | { parts: any[] };
 
         if (withVisualAnalysis && imageB64Data) {
@@ -362,7 +386,7 @@ export const evaluateAnswer = async (question: string, answer: string, subject: 
                 responseSchema: schema,
             }
         });
-        
+
         const jsonText = response.text.trim();
         return JSON.parse(jsonText) as Feedback;
 
