@@ -51,7 +51,7 @@ app.post('/api/sessions/:id/questions', async (req, res) => {
 // Generate question server-side (calls Gemini if key is present)
 app.post('/api/generate-question', async (req, res) => {
   try {
-    const { subject, difficulty, previousQuestions = [] } = req.body;
+    const { subject, difficulty, previousQuestions = [], resumeText } = req.body;
     if (!subject || !difficulty) return res.status(400).json({ error: 'subject & difficulty required' });
 
     // If no Gemini key available, return a placeholder
@@ -65,9 +65,14 @@ app.post('/api/generate-question', async (req, res) => {
       prevContext = '\n\nPreviously asked questions:\n' + previousQuestions.map((q: string, i: number) => `${i + 1}. ${q}`).join('\n') + '\n\nDo not repeat these.';
     }
 
-    const prompt = `You are a ${persona}. The topic is '${subject}'. Ask EXACTLY ONE interview question only. Return only the question itself. ${prevContext}`;
+    let resumeContext = '';
+    if (resumeText) {
+      resumeContext = `\n\nThe candidate's resume/profile is as follows:\n"""\n${resumeText}\n"""\n\nBase your questions on the technologies, projects, and experiences mentioned in this resume. If the subject is 'Resume Interview', ask exclusively about their resume. `;
+    }
 
-    const response = await genai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { temperature: 0.8, maxOutputTokens: 120 } });
+    const prompt = `You are a ${persona}. The topic is '${subject}'. Ask EXACTLY ONE interview question only. Return only the question itself. ${resumeContext}${prevContext}`;
+
+    const response = await genai.models.generateContent({ model: 'gemini-1.5-flash', contents: prompt, config: { temperature: 0.8, maxOutputTokens: 120 } });
     const raw = (response.text || '').trim();
 
     // try parse JSON or fallback to first line until first ?

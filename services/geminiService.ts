@@ -154,108 +154,32 @@ CRITICAL: Return ONLY a JSON object with a single property named "question". Exa
 
 export const generateQuestion = async (subject: Subject | string, difficulty: Difficulty, previousQuestions: string[] = [], resumeText?: string): Promise<string> => {
     try {
-        const prompt = getQuestionGenerationPrompt(subject, difficulty, previousQuestions, resumeText);
-        const response = await getAi().models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: questionSchema,
-                temperature: 0.6,
-                maxOutputTokens: 250
-            }
+        const response = await fetch('http://localhost:4000/api/generate-question', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subject,
+                difficulty,
+                previousQuestions,
+                resumeText
+            })
         });
 
-        const raw = (response.text || '').trim();
-
-        const keepOnlyFirstQuestion = (text: string): string => {
-            if (!text) return '';
-            let candidate = text.replace(/\s+/g, ' ').trim();
-            // Remove any leading numbering or labels
-            candidate = candidate.replace(/^[\d]+[\.]?\)?\s*/, '').replace(/^(Question|Q|Ask)[:\s-]*/i, '').trim();
-            // Cut anything after connectors that often introduce follow-ups
-            candidate = candidate.split(/\b(?:Also|Additionally|And then|Next|Follow up|Follow-up|As well as)\b/i)[0].trim();
-            if (candidate.includes('?')) {
-                const firstQ = candidate.split('?')[0].trim();
-                return firstQ ? `${firstQ}?` : candidate;
-            }
-            // If no question mark, stop at first sentence end to avoid double prompts
-            const sentenceEnd = candidate.search(/[.!]/);
-            if (sentenceEnd !== -1) {
-                candidate = candidate.slice(0, sentenceEnd + 1).trim();
-            }
-            return candidate;
-        };
-
-        // Prefer the schema-constrained response
-        try {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed.question === 'string') {
-                const single = keepOnlyFirstQuestion(parsed.question);
-                if (single) {
-                    return single;
-                }
-            }
-        } catch (e) {
-            // fall through to sanitization
-            console.warn('Failed to parse JSON from model output, falling back to sanitization.');
+        if (!response.ok) {
+            throw new Error(`API error! status: ${response.status}`);
         }
 
-        // Debug: if model returned multiple question markers, log raw output to help diagnose why multiples appear
-        try {
-            const questionMarkCount = (raw.match(/\?/g) || []).length;
-            const newlineQuestionLines = (raw.match(/\n.*(what|how|why|explain|describe|define)/ig) || []).length;
-            if (questionMarkCount > 1 || newlineQuestionLines > 1) {
-                // eslint-disable-next-line no-console
-                console.warn('Gemini returned multiple-question-like output. Raw response follows:\n', raw);
-            }
-        } catch (e) {
-            // ignore logging errors
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error);
         }
 
-        // First, attempt to parse strict JSON as requested in the prompt.
-        try {
-            // Some models may wrap the JSON in backticks or markdown; try to extract the first JSON object.
-            const jsonMatch = raw.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                const parsed = JSON.parse(jsonMatch[0]);
-                if (parsed && typeof parsed.question === 'string' && parsed.question.trim().length > 0) {
-                    return parsed.question.trim();
-                }
-            }
-        } catch (e) {
-            // fall through to sanitization
-            console.warn('Failed to parse JSON from model output, falling back to sanitization.');
+        if (data.question) {
+            return data.question;
         }
 
-        // Fallback sanitization: pick the first real question-like line.
-        let cleanText = raw.replace(/^[\d]+[\.]?\)?\s*/, '').replace(/^Question\s+[\d]+[\:\-\s]*/, '').trim();
-        const lines = cleanText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-
-        // 1) Prefer the first line that contains a question mark
-        let candidateLine = lines.find(l => l.includes('?'));
-
-        // 2) If none found, look for lines containing common question words
-        if (!candidateLine) {
-            const questionWordRegex = /\b(what|how|why|explain|describe|define|implement|compare|difference|when|where|which)\b/i;
-            candidateLine = lines.find(l => questionWordRegex.test(l));
-        }
-
-        // 3) If still none, try to find the first numbered item like "1) ..." or "1. ..."
-        if (!candidateLine) {
-            const numbered = lines.map(l => l.replace(/^[\d]+[\.)]\s*/, '')).find(l => l && l.length > 5);
-            candidateLine = numbered || lines[0] || '';
-        }
-
-        candidateLine = keepOnlyFirstQuestion(candidateLine || '');
-
-        const question = candidateLine ? (candidateLine.endsWith('?') ? candidateLine : candidateLine + '?') : '';
-
-        if (!question || question === '?') {
-            return "I'm having trouble coming up with a question right now. Let's try again in a moment. (Parsing failed)";
-        }
-
-        return question;
+        return "I'm having trouble coming up with a question right now. Let's try again in a moment. [Empty reply]";
     } catch (error) {
         console.error("Error generating question:", error);
         return `I'm having trouble coming up with a question right now. Let's try again in a moment. [Error: ${error instanceof Error ? error.message : String(error)}]`;
