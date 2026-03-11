@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { GoogleGenAI } from '@google/genai';
-
+import OpenAI from 'openai';
 dotenv.config();
 
 const app = express();
@@ -13,10 +13,14 @@ app.use(express.json());
 const prisma = new PrismaClient();
 const port = process.env.PORT || 4000;
 
-// Initialize Gemini client if key provided
 let genai: any = null;
 if (process.env.GEMINI_API_KEY) {
   genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+}
+
+let openai: OpenAI | null = null;
+if (process.env.OPENAI_API_KEY) {
+  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
 app.get('/api/health', (_req, res) => {
@@ -50,16 +54,31 @@ app.post('/api/sessions/:id/questions', async (req, res) => {
 
 // Generate question server-side (calls Gemini if key is present)
 app.post('/api/generate-question', async (req, res) => {
-  try {
-    const { subject, difficulty, previousQuestions = [], resumeText } = req.body;
-    if (!subject || !difficulty) return res.status(400).json({ error: 'subject & difficulty required' });
+  const { subject, difficulty, previousQuestions = [], resumeText } = req.body;
+  if (!subject || !difficulty) return res.status(400).json({ error: 'subject & difficulty required' });
 
-    // If no Gemini key available, return a placeholder
-    if (!genai) {
-      return res.json({ question: `Mock question for ${subject} (${difficulty}) — set GEMINI_API_KEY on server to enable real generation.` });
+  const getFallbackQuestion = () => {
+    const fallbacks = [
+      `Could you elaborate on your experience with ${subject}?`,
+      `What do you consider your greatest strength when working with ${subject}?`,
+      `Can you describe a challenging problem you solved related to ${subject}?`,
+      `How do you keep your skills sharp and up to date with ${subject}?`,
+      `What are some best practices you follow when working with ${subject}?`
+    ];
+    return fallbacks[Math.floor(Math.random() * fallbacks.length)];
+  };
+
+  try {
+    // If no AI key available, return a placeholder
+    if (!openai && !genai) {
+      return res.json({ question: getFallbackQuestion() });
     }
 
-    const persona = difficulty === 'Beginner' ? 'friendly interviewer for a beginner' : difficulty === 'Intermediate' ? 'professional interviewer for an intermediate candidate' : 'senior-level interviewer assessing an expert candidate';
+    const persona = difficulty === 'Beginner'
+      ? 'friendly interviewer for an entry-level professional. Ask a real, practical conceptual question suitable for a junior role. Do NOT ask trivial definition questions like "What is a variable" or "What is an array".'
+      : difficulty === 'Intermediate'
+        ? 'professional interviewer for an mid-level candidate. Ask practical, somewhat challenging questions.'
+        : 'senior-level interviewer assessing an expert candidate. Ask deep, complex questions about architecture, trade-offs, and advanced topics.';
     let prevContext = '';
     if (previousQuestions && previousQuestions.length > 0) {
       prevContext = '\n\nPreviously asked questions:\n' + previousQuestions.map((q: string, i: number) => `${i + 1}. ${q}`).join('\n') + '\n\nDo not repeat these.';
@@ -67,33 +86,50 @@ app.post('/api/generate-question', async (req, res) => {
 
     let resumeContext = '';
     if (resumeText) {
-      resumeContext = `\n\nThe candidate's resume/profile is as follows:\n"""\n${resumeText}\n"""\n\nBase your questions on the technologies, projects, and experiences mentioned in this resume. If the subject is 'Resume Interview', ask exclusively about their resume. `;
+      if (subject === 'Resume Interview') {
+        resumeContext = `\n\nThe candidate's resume/profile is as follows:\n"""\n${resumeText}\n"""\n\nCRITICAL: You MUST base your question entirely on the technologies, projects, and experiences mentioned in this resume.`;
+      } else {
+        resumeContext = `\n\nThe candidate's resume/profile is as follows:\n"""\n${resumeText}\n"""\n\nCRITICAL: The interview topic is explicitly '${subject}'. You must ask a question broadly testing their knowledge of '${subject}'. You may briefly relate the question to their resume experience if possible, but the core topic MUST be '${subject}'.`;
+      }
     }
 
     const prompt = `You are a ${persona}. The topic is '${subject}'. Ask EXACTLY ONE interview question only. Return only the question itself. ${resumeContext}${prevContext}`;
 
-    const response = await genai.models.generateContent({ model: 'gemini-1.5-flash', contents: prompt, config: { temperature: 0.8, maxOutputTokens: 120 } });
-    const raw = (response.text || '').trim();
+    let question = '';
 
-    // try parse JSON or fallback to first line until first ?
-    let question = raw;
-    try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed && typeof parsed.question === 'string') question = parsed.question.trim();
+    if (openai) {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.8,
+        max_tokens: 120,
+      });
+      question = (response.choices[0].message?.content || '').trim();
+    } else if (genai) {
+      const response = await genai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { temperature: 0.8, maxOutputTokens: 120 } });
+      const raw = (response.text || '').trim();
+      question = raw;
+
+      // try parse JSON or fallback to first line until first ?
+      try {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed && typeof parsed.question === 'string') question = parsed.question.trim();
+        }
+      } catch (e) {
+        // ignore
       }
-    } catch (e) {
-      // ignore
     }
 
     // fallback cut at first ?
     if (question.includes('?')) question = question.split('?')[0].trim() + '?';
 
     return res.json({ question });
-  } catch (err) {
-    console.error('generate error', err);
-    res.status(500).json({ error: 'failed to generate' });
+  } catch (err: any) {
+    console.error('generate error message:', err.message);
+    // If it fails (e.g., rate limit, 404, invalid key), fallback to returning a generic question so the interview doesn't stall.
+    return res.json({ question: getFallbackQuestion() });
   }
 });
 

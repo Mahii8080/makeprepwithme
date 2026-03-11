@@ -43,7 +43,7 @@ model Feedback {
   id         String   @id @default(cuid())
   sessionId  String
   userId     String
-  questionId String?
+  questionId String?  @unique
   score      Int
   feedback   String
   createdAt  DateTime @default(now())
