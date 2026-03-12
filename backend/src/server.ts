@@ -137,9 +137,10 @@ INSTRUCTIONS:
 - ${depthInstruction}
 - ${topicFocus}
 - Ask EXACTLY ONE question. No multiple parts, no sub-questions, no follow-ups.
+- Keep the question SHORT and COMPLETE — under 40 words. It MUST end with a question mark (?).
 - Do NOT add any preamble, greeting, filler, or commentary (e.g., no "Okay", "Great", "Sure", "Here's your question:", "Alright candidate").
-- Start the question directly (e.g., "What is...", "How does...", "Explain...", "What are the differences between...", "Can you describe...").
-- Output ONLY the question text, nothing else.
+- Start the question directly (e.g., "What is...", "How does...", "Explain...", "What is the difference between...", "Can you describe...").
+- Output ONLY the complete question text, nothing else. The question MUST be grammatically complete.
 ${resumeContext}${prevContext}`;
 
     let question = '';
@@ -150,7 +151,7 @@ ${resumeContext}${prevContext}`;
         contents: prompt, 
         config: { 
           temperature: 0.9, 
-          maxOutputTokens: 200
+          maxOutputTokens: 500
         } 
       });
       const raw = (response.text || '').trim();
