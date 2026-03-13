@@ -222,18 +222,59 @@ const HumanoidModel: React.FC<{ state: AvatarState }> = ({ state }) => {
           </Box>
         </group>
 
-        {/* Glasses - Professional Frames */}
-        <group position={[0, 0.1, 0.4]}>
-          <Box args={[0.5, 0.03, 0.05]} position={[0, 0.06, 0]}><meshStandardMaterial color="#000" /></Box>
-          <group position={[-0.15, 0, 0]}>
-             <Box args={[0.18, 0.15, 0.02]}><meshStandardMaterial color="#000" transparent opacity={0.2} /></Box>
-             <Box args={[0.2, 0.02, 0.04]} position={[0, 0.08, 0]}><meshStandardMaterial color="#000" /></Box>
-             <Box args={[0.2, 0.02, 0.04]} position={[0, -0.08, 0]}><meshStandardMaterial color="#000" /></Box>
+        {/* Sunglasses - Aviator Style with Gold Frame & Dark Tinted Lenses */}
+        <group position={[0, 0.08, 0.38]}>
+          {/* Temple arms - gold metallic */}
+          <Box args={[0.38, 0.015, 0.015]} position={[-0.32, 0, -0.06]} rotation={[0, 0.15, 0]}>
+            <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+          </Box>
+          <Box args={[0.38, 0.015, 0.015]} position={[0.32, 0, -0.06]} rotation={[0, -0.15, 0]}>
+            <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+          </Box>
+
+          {/* Nose bridge - gold */}
+          <Box args={[0.06, 0.02, 0.04]} position={[0, -0.01, 0.01]}>
+            <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+          </Box>
+
+          {/* Left lens - dark tinted aviator shape */}
+          <group position={[-0.155, 0, 0]}>
+            {/* Lens fill - very dark tinted */}
+            <Sphere args={[0.1, 32, 16]} scale={[1, 0.75, 0.18]}>
+              <meshStandardMaterial color="#05051a" transparent opacity={0.92} metalness={0.3} roughness={0.1} />
+            </Sphere>
+            {/* Gold frame ring */}
+            <Sphere args={[0.105, 32, 8]} scale={[1, 0.76, 0.12]}>
+              <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} wireframe={false} />
+            </Sphere>
+            {/* Lens top bar */}
+            <Box args={[0.21, 0.018, 0.02]} position={[0, 0.075, 0]}>
+              <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+            </Box>
+            {/* Shine highlight on lens */}
+            <Sphere args={[0.055, 16, 8]} scale={[1, 0.5, 0.05]} position={[-0.02, 0.03, 0.09]}>
+              <meshStandardMaterial color="#ffffff" transparent opacity={0.18} />
+            </Sphere>
           </group>
-          <group position={[0.15, 0, 0]}>
-             <Box args={[0.18, 0.15, 0.02]}><meshStandardMaterial color="#000" transparent opacity={0.2} /></Box>
-             <Box args={[0.2, 0.02, 0.04]} position={[0, 0.08, 0]}><meshStandardMaterial color="#000" /></Box>
-             <Box args={[0.2, 0.02, 0.04]} position={[0, -0.08, 0]}><meshStandardMaterial color="#000" /></Box>
+
+          {/* Right lens - dark tinted aviator shape */}
+          <group position={[0.155, 0, 0]}>
+            {/* Lens fill - very dark tinted */}
+            <Sphere args={[0.1, 32, 16]} scale={[1, 0.75, 0.18]}>
+              <meshStandardMaterial color="#05051a" transparent opacity={0.92} metalness={0.3} roughness={0.1} />
+            </Sphere>
+            {/* Gold frame ring */}
+            <Sphere args={[0.105, 32, 8]} scale={[1, 0.76, 0.12]}>
+              <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+            </Sphere>
+            {/* Lens top bar */}
+            <Box args={[0.21, 0.018, 0.02]} position={[0, 0.075, 0]}>
+              <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+            </Box>
+            {/* Shine highlight on lens */}
+            <Sphere args={[0.055, 16, 8]} scale={[1, 0.5, 0.05]} position={[0.02, 0.03, 0.09]}>
+              <meshStandardMaterial color="#ffffff" transparent opacity={0.18} />
+            </Sphere>
           </group>
         </group>
 

@@ -194,4 +194,67 @@ ${resumeContext}${prevContext}`;
   }
 });
 
+// Evaluate answer server-side (avoids CORS when calling AI from browser)
+app.post('/api/evaluate-answer', async (req, res) => {
+  const { question, answer, subject, difficulty } = req.body;
+  if (!question || !answer || !subject || !difficulty) {
+    return res.status(400).json({ error: 'question, answer, subject & difficulty required' });
+  }
+
+  const prompt = `You are a professional technical interviewer evaluating a candidate's answer.
+
+Subject: ${subject}
+Difficulty Level: ${difficulty}
+Question Asked: "${question}"
+Candidate's Answer: "${answer}"
+
+Evaluate the answer and return a JSON object with exactly these fields:
+- "score": integer from 0-10 (0 = completely wrong, 5 = partially correct, 8-9 = very good, 10 = perfect)
+- "feedback": string (2-4 sentences) — explain what was correct, what was missing/wrong, and how to improve
+- "suggestedAnswer": string (3-6 sentences) — provide a clear, complete model answer the candidate should have given
+- "nonVerbalFeedback": null
+
+IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
+
+  try {
+    if (genai) {
+      const response = await genai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' }
+      });
+      const raw = (response.text || '').trim();
+      let clean = raw;
+      if (clean.startsWith('```')) {
+        clean = clean.replace(/^```(json)?/, '').replace(/```$/, '').trim();
+      }
+      const parsed = JSON.parse(clean);
+      return res.json(parsed);
+    } else if (openai) {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' }
+      });
+      const content = completion.choices[0].message?.content || '{}';
+      return res.json(JSON.parse(content));
+    } else {
+      return res.json({
+        score: 5,
+        feedback: 'No AI service is configured. Please add a Gemini or OpenAI API key.',
+        suggestedAnswer: 'N/A',
+        nonVerbalFeedback: null
+      });
+    }
+  } catch (err: any) {
+    console.error('evaluate-answer error:', err.message);
+    return res.json({
+      score: 5,
+      feedback: 'There was an issue evaluating your answer. Please try again.',
+      suggestedAnswer: 'N/A',
+      nonVerbalFeedback: null
+    });
+  }
+});
+
 app.listen(port, () => console.log(`Backend API listening on http://localhost:${port}`));

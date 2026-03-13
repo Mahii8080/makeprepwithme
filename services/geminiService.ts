@@ -224,7 +224,7 @@ export const generateQuestion = async (subject: Subject | string, difficulty: Di
                 responseMimeType: "application/json",
             }
         });
-        const jsonText = response.text();
+        const jsonText = response.text;
         const parsed = parseAiJson(jsonText);
         if (parsed.question) return parsed.question;
     } catch (geminiError: any) {
@@ -267,25 +267,49 @@ export const generateQuestion = async (subject: Subject | string, difficulty: Di
 };
 
 export const evaluateAnswer = async (question: string, answer: string, subject: Subject | string, difficulty: Difficulty, imageB64Data?: string | null): Promise<Feedback> => {
-    const withVisual = difficulty === 'Advanced' && !!imageB64Data;
-    const prompt = `
-        Evaluate this answer for Subject: ${subject}, Difficulty: ${difficulty}.
-        Question: "${question}"
-        Answer: "${answer}"
-        ${withVisual ? "Analyze the candidate's facial expression for confidence/engagement." : ""}
-        
-        Return JSON: { "score": 0-10, "feedback": "text", "suggestedAnswer": "text", "nonVerbalFeedback": "optional text" }
-    `;
+    // ── PRIMARY: Call the backend API (avoids CORS errors when calling AI from browser) ──
+    try {
+        const response = await fetch('http://localhost:4000/api/evaluate-answer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, answer, subject, difficulty }),
+        });
+        if (response.ok) {
+            const data = await response.json();
+            if (data && typeof data.score === 'number' && data.feedback) {
+                console.log('Feedback received from backend successfully.');
+                return data as Feedback;
+            }
+        } else {
+            console.warn('Backend evaluate-answer returned non-OK status:', response.status);
+        }
+    } catch (backendError: any) {
+        console.warn('Backend evaluate-answer failed, trying direct AI:', backendError?.message);
+    }
 
-    // 1. Try Gemini
+    // ── FALLBACK: Try Gemini directly (only works if CORS permits) ──
+    const withVisual = difficulty === 'Advanced' && !!imageB64Data;
+    const prompt = `You are a professional technical interviewer evaluating a candidate's answer.
+
+Subject: ${subject}
+Difficulty Level: ${difficulty}
+Question Asked: "${question}"
+Candidate's Answer: "${answer}"
+${withVisual ? "\nAlso analyze the candidate's facial expression for confidence, eye contact, and engagement." : ""}
+
+Evaluate the answer and return a JSON object with exactly these fields:
+- "score": integer from 0-10 (0 = completely wrong, 5 = partially correct, 8-9 = very good, 10 = perfect)
+- "feedback": string (2-4 sentences) — explain what was correct, what was missing/wrong, and how to improve
+- "suggestedAnswer": string (3-6 sentences) — provide a clear, complete model answer the candidate should have given
+${withVisual ? '- "nonVerbalFeedback": string — 1-2 sentences about body language, confidence, eye contact from the video' : '- "nonVerbalFeedback": null'}
+
+IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
+
     try {
         const parts: any[] = [{ text: prompt }];
         if (withVisual && imageB64Data) {
             parts.push({
-                inlineData: {
-                    mimeType: 'image/jpeg',
-                    data: imageB64Data.split(',')[1],
-                }
+                inlineData: { mimeType: 'image/jpeg', data: imageB64Data.split(',')[1] }
             });
         }
         const response = await getGenAI().models.generateContent({
@@ -293,23 +317,21 @@ export const evaluateAnswer = async (question: string, answer: string, subject: 
             contents: [{ role: 'user', parts }],
             config: { responseMimeType: "application/json" }
         });
-        return parseAiJson(response.text());
+        return parseAiJson(response.text);
     } catch (e: any) {
-        console.warn("Gemini evaluation failed, falling back to OpenAI. Error:", e?.message || e);
+        console.warn("Direct Gemini evaluation failed:", e?.message || e);
     }
 
-    // 2. Fallback to OpenAI
-    const openai = getOpenAI();
-    if (openai) {
+    // ── FINAL FALLBACK: OpenAI ──
+    const openaiClient = getOpenAI();
+    if (openaiClient) {
         try {
-            console.log("Triggering OpenAI fallback for evaluation...");
-            const completion = await openai.chat.completions.create({
+            const completion = await openaiClient.chat.completions.create({
                 model: OPENAI_MODEL,
                 messages: [{ role: "user", content: prompt + "\n\nIMPORTANT: Return ONLY raw JSON. No markdown blocks." }],
                 response_format: { type: "json_object" }
             });
             const content = completion.choices[0].message.content || '{}';
-            console.log("OpenAI successfully evaluated the answer.");
             return parseAiJson(content);
         } catch (e: any) {
             console.error("OpenAI evaluation failed:", e?.message || e);
@@ -318,9 +340,9 @@ export const evaluateAnswer = async (question: string, answer: string, subject: 
 
     return {
         score: 5,
-        feedback: "I'm having a little trouble connecting to my brain right now, but that sounded like a solid attempt! Let's keep moving through your interview.",
-        suggestedAnswer: "Continue to the next question to keep your momentum!",
-        error: false // Set to false so the UI doesn't show an error state
+        feedback: "Could not reach the AI service. Please ensure the backend server is running on port 4000.",
+        suggestedAnswer: "Restart the backend server and try again.",
+        error: false
     };
 };
 

@@ -130,6 +130,30 @@ const MentorFaceSVG: React.FC<{ state: AvatarState }> = ({ state }) => {
         <clipPath id="rightEyeClip">
           <ellipse cx="160" cy="136" rx="19" ry="14" />
         </clipPath>
+        {/* Sunglasses lens gradients - mirrored aviator effect */}
+        <radialGradient id="lensGradL" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#4a4a6a" stopOpacity="0.7" />
+          <stop offset="60%" stopColor="#0d0d1a" stopOpacity="0.92" />
+          <stop offset="100%" stopColor="#000010" stopOpacity="0.98" />
+        </radialGradient>
+        <radialGradient id="lensGradR" cx="65%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#4a4a6a" stopOpacity="0.7" />
+          <stop offset="60%" stopColor="#0d0d1a" stopOpacity="0.92" />
+          <stop offset="100%" stopColor="#000010" stopOpacity="0.98" />
+        </radialGradient>
+        <linearGradient id="lensShineL" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="white" stopOpacity="0.25" />
+          <stop offset="40%" stopColor="white" stopOpacity="0.05" />
+          <stop offset="100%" stopColor="white" stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="frameGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#d4af60" />
+          <stop offset="50%" stopColor="#c8a030" />
+          <stop offset="100%" stopColor="#a07820" />
+        </linearGradient>
+        <filter id="lensGlow" x="-10%" y="-10%" width="120%" height="120%">
+          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000040" floodOpacity="0.6" />
+        </filter>
       </defs>
 
       {/* ── BODY / SUIT ── */}
@@ -219,7 +243,7 @@ const MentorFaceSVG: React.FC<{ state: AvatarState }> = ({ state }) => {
         />
       </g>
 
-      {/* ── EYES ── */}
+      {/* ── EYES (hidden under sunglasses) ── */}
       {/* Left eye socket shadow */}
       <ellipse cx="100" cy="138" rx="22" ry="16" fill={skin2} opacity="0.25" />
       {/* Right eye socket shadow */}
@@ -231,13 +255,10 @@ const MentorFaceSVG: React.FC<{ state: AvatarState }> = ({ state }) => {
         <ellipse cx="100" cy="136" rx="19" ry="14" fill="white" />
         <circle cx="100" cy="136" r="10" fill="url(#irisGrad)" />
         <circle cx="100" cy="136" r="6" fill="#01274E" />
-        {/* Catchlights */}
         <circle cx="105" cy="131" r="3" fill="white" opacity="0.9" />
         <circle cx="96" cy="140" r="1.5" fill="white" opacity="0.5" />
-        {/* Eyelashes */}
         <path d="M 81 136 Q 82 122 100 122 Q 118 122 119 136" fill="#2D1B08" />
       </g>
-      {/* Left lower eyelid */}
       <path d="M 81 136 Q 100 150 119 136" fill="none" stroke={skin2} strokeWidth="1" />
 
       {/* Right Eye */}
@@ -246,14 +267,62 @@ const MentorFaceSVG: React.FC<{ state: AvatarState }> = ({ state }) => {
         <ellipse cx="160" cy="136" rx="19" ry="14" fill="white" />
         <circle cx="160" cy="136" r="10" fill="url(#irisGrad)" />
         <circle cx="160" cy="136" r="6" fill="#01274E" />
-        {/* Catchlights */}
         <circle cx="165" cy="131" r="3" fill="white" opacity="0.9" />
         <circle cx="156" cy="140" r="1.5" fill="white" opacity="0.5" />
-        {/* Eyelashes */}
         <path d="M 141 136 Q 142 122 160 122 Q 178 122 179 136" fill="#2D1B08" />
       </g>
-      {/* Right lower eyelid */}
       <path d="M 141 136 Q 160 150 179 136" fill="none" stroke={skin2} strokeWidth="1" />
+
+      {/* ── SUNGLASSES (Aviator Style) ── */}
+      <g filter="url(#lensGlow)">
+        {/* Temple arms */}
+        <line x1="76" y1="130" x2="56" y2="132" stroke="url(#frameGrad)" strokeWidth="3.5" strokeLinecap="round" />
+        <line x1="184" y1="130" x2="204" y2="132" stroke="url(#frameGrad)" strokeWidth="3.5" strokeLinecap="round" />
+
+        {/* Left lens - teardrop aviator shape */}
+        <path
+          d="M 78 118 Q 100 108 122 118 Q 130 128 125 146 Q 118 160 100 162 Q 82 160 75 146 Q 70 128 78 118 Z"
+          fill="url(#lensGradL)"
+          stroke="url(#frameGrad)"
+          strokeWidth="2.5"
+        />
+        {/* Left lens shine */}
+        <path
+          d="M 82 118 Q 96 112 112 118 Q 107 115 96 113 Q 86 113 82 118 Z"
+          fill="url(#lensShineL)"
+        />
+        {/* Left lens inner highlight arc */}
+        <path d="M 85 122 Q 100 116 115 122" fill="none" stroke="white" strokeWidth="1" opacity="0.2" strokeLinecap="round" />
+
+        {/* Right lens - teardrop aviator shape */}
+        <path
+          d="M 138 118 Q 160 108 182 118 Q 190 128 185 146 Q 178 160 160 162 Q 142 160 135 146 Q 130 128 138 118 Z"
+          fill="url(#lensGradR)"
+          stroke="url(#frameGrad)"
+          strokeWidth="2.5"
+        />
+        {/* Right lens shine */}
+        <path
+          d="M 142 118 Q 156 112 172 118 Q 167 115 156 113 Q 146 113 142 118 Z"
+          fill="url(#lensShineL)"
+        />
+        {/* Right lens inner highlight arc */}
+        <path d="M 145 122 Q 160 116 175 122" fill="none" stroke="white" strokeWidth="1" opacity="0.2" strokeLinecap="round" />
+
+        {/* Nose bridge */}
+        <path
+          d="M 122 122 Q 128 126 130 130 Q 132 126 138 122"
+          fill="none"
+          stroke="url(#frameGrad)"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+        />
+
+        {/* Top frame bar left */}
+        <path d="M 78 118 Q 100 110 122 118" fill="none" stroke="url(#frameGrad)" strokeWidth="3" strokeLinecap="round" />
+        {/* Top frame bar right */}
+        <path d="M 138 118 Q 160 110 182 118" fill="none" stroke="url(#frameGrad)" strokeWidth="3" strokeLinecap="round" />
+      </g>
 
       {/* ── NOSE ── */}
       <g>
