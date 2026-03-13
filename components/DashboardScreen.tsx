@@ -136,6 +136,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
   const [isCustomLoading, setIsCustomLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef(false);
+  const isStartingRef = useRef(false);
+  const handleCustomAskRef = useRef<(val?: string) => void>(() => {});
 
   const handleDifficultySelect = (difficulty: Difficulty) => {
     if (selectedSubject) {
@@ -169,39 +172,83 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
     }
   }, [customDifficulty, customInput, customSubject, isCustomLoading]);
 
+  // Keep ref in sync to avoid stale closures in recognition callbacks
+  useEffect(() => { handleCustomAskRef.current = handleCustomAsk; }, [handleCustomAsk]);
+
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+    if (!SpeechRecognition) return;
 
-      recognition.onstart = () => setIsListening(true);
-      recognition.onend = () => setIsListening(false);
-      recognition.onerror = () => setIsListening(false);
-      recognition.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0])
-          .map((result) => result.transcript)
-          .join('');
-        setCustomInput(transcript);
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
 
-        const lastResult = event.results[event.results.length - 1];
-        if (lastResult.isFinal) {
-          handleCustomAsk(transcript);
+    let accumulatedTranscript = '';
+
+    recognition.onstart = () => {
+      isStartingRef.current = false;
+      setIsListening(true);
+      isListeningRef.current = true;
+      accumulatedTranscript = '';
+    };
+
+    recognition.onend = () => {
+      isStartingRef.current = false;
+      setIsListening(false);
+      isListeningRef.current = false;
+      const final = accumulatedTranscript.trim();
+      if (final && !isCustomLoading) {
+        handleCustomAskRef.current(final);
+      }
+      accumulatedTranscript = '';
+    };
+
+    recognition.onerror = () => {
+      isStartingRef.current = false;
+      setIsListening(false);
+      isListeningRef.current = false;
+    };
+
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      let newlyFinal = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          newlyFinal += transcript + ' ';
+        } else {
+          interim += transcript;
         }
-      };
-      recognitionRef.current = recognition;
-    }
-  }, [handleCustomAsk]);
+      }
+
+      if (newlyFinal) {
+        accumulatedTranscript += newlyFinal;
+      }
+
+      setCustomInput((accumulatedTranscript + interim).trim());
+    };
+
+    recognitionRef.current = recognition;
+    return () => {
+      isStartingRef.current = false;
+      try { recognition.abort(); } catch (_) { /* ignore */ }
+    };
+  }, []); // Run ONCE
 
   const toggleListen = () => {
     if (!recognitionRef.current || isCustomLoading) return;
-    if (isListening) {
-      recognitionRef.current.stop();
+    if (isListeningRef.current || isStartingRef.current) {
+      try { recognitionRef.current.stop(); } catch (_) {}
     } else {
-      recognitionRef.current.start();
+      isStartingRef.current = true;
+      try {
+        recognitionRef.current.start();
+      } catch (err) {
+        console.error('Mic start error:', err);
+        isStartingRef.current = false;
+      }
     }
   };
 
