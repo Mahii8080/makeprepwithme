@@ -7,6 +7,10 @@ export interface User {
   createdAt: string;
 }
 
+interface StoredUser extends User {
+  passwordHash: string;
+}
+
 export interface UserSession {
   user: User;
   loginTime: string;
@@ -15,10 +19,19 @@ export interface UserSession {
 const USERS_KEY = 'makePrepWithMe_users';
 const CURRENT_SESSION_KEY = 'makePrepWithMe_session';
 
+
+const hashPassword = (password: string): string => {
+  let hash = 5381;
+  for (let i = 0; i < password.length; i++) {
+    hash = (hash * 33) ^ password.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16); // unsigned 32-bit hex string
+};
+
 /**
- * Get all registered users
+ * Get all registered users (stored users include password hash)
  */
-export const getAllUsers = (): User[] => {
+const getAllStoredUsers = (): StoredUser[] => {
   try {
     const data = localStorage.getItem(USERS_KEY);
     return data ? JSON.parse(data) : [];
@@ -29,9 +42,16 @@ export const getAllUsers = (): User[] => {
 };
 
 /**
+ * Get all registered users (public view — no password hash)
+ */
+export const getAllUsers = (): User[] => {
+  return getAllStoredUsers().map(({ passwordHash: _ph, ...user }) => user);
+};
+
+/**
  * Save all users
  */
-const saveUsers = (users: User[]) => {
+const saveStoredUsers = (users: StoredUser[]) => {
   try {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
   } catch (error) {
@@ -42,7 +62,11 @@ const saveUsers = (users: User[]) => {
 /**
  * Register a new user
  */
-export const registerUser = (username: string, email: string): { success: boolean; message: string; user?: User } => {
+export const registerUser = (
+  username: string,
+  email: string,
+  password: string
+): { success: boolean; message: string; user?: User } => {
   // Validation
   if (!username || username.trim().length < 3) {
     return { success: false, message: 'Username must be at least 3 characters long.' };
@@ -52,7 +76,11 @@ export const registerUser = (username: string, email: string): { success: boolea
     return { success: false, message: 'Please enter a valid email address.' };
   }
 
-  const users = getAllUsers();
+  if (!password || password.length < 6) {
+    return { success: false, message: 'Password must be at least 6 characters long.' };
+  }
+
+  const users = getAllStoredUsers();
 
   // Check if user already exists
   if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
@@ -64,44 +92,57 @@ export const registerUser = (username: string, email: string): { success: boolea
   }
 
   // Create new user
-  const newUser: User = {
+  const newStoredUser: StoredUser = {
     id: `user_${Date.now()}`,
     username: username.trim(),
     email: email.trim().toLowerCase(),
     createdAt: new Date().toISOString(),
+    passwordHash: hashPassword(password),
   };
 
-  users.push(newUser);
-  saveUsers(users);
+  users.push(newStoredUser);
+  saveStoredUsers(users);
 
+  // Return public user (no password hash)
+  const { passwordHash: _ph, ...publicUser } = newStoredUser;
   // Auto-login after registration
-  setCurrentSession(newUser);
+  setCurrentSession(publicUser);
 
-  return { success: true, message: 'Registration successful!', user: newUser };
+  return { success: true, message: 'Registration successful!', user: publicUser };
 };
 
 /**
  * Login user
  */
-export const loginUser = (email: string, password?: string): { success: boolean; message: string; user?: User } => {
-  // Note: In a real app, password would be hashed and verified on a secure backend.
-  // For this demo, we use email-based login (no password).
-  
+export const loginUser = (
+  email: string,
+  password: string
+): { success: boolean; message: string; user?: User } => {
   if (!email || !email.includes('@')) {
     return { success: false, message: 'Please enter a valid email address.' };
   }
 
-  const users = getAllUsers();
-  const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-  if (!user) {
-    return { success: false, message: 'User not found. Please register first.' };
+  if (!password) {
+    return { success: false, message: 'Please enter your password.' };
   }
 
-  // Set current session
-  setCurrentSession(user);
+  const users = getAllStoredUsers();
+  const storedUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
 
-  return { success: true, message: 'Login successful!', user };
+  if (!storedUser) {
+    return { success: false, message: 'No account found with this email. Please register first.' };
+  }
+
+  // Verify password
+  if (storedUser.passwordHash !== hashPassword(password)) {
+    return { success: false, message: 'Incorrect password. Please try again.' };
+  }
+
+  // Return public user (no password hash)
+  const { passwordHash: _ph, ...publicUser } = storedUser;
+  setCurrentSession(publicUser);
+
+  return { success: true, message: 'Login successful!', user: publicUser };
 };
 
 /**
