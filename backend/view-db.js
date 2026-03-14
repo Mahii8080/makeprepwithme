@@ -29,6 +29,16 @@ async function main() {
     questions: s.feedbacks.length,
     date: s.startedAt
   })));
+
+  if (sessions.length > 0) {
+    console.log('\n--- DETAILED FEEDBACK (Latest Session) ---');
+    const latestFeedback = sessions[0].feedbacks;
+    console.table(latestFeedback.map(f => ({
+      score: f.score,
+      feedback: f.feedback.substring(0, 50) + '...',
+      suggested: (f.suggestedAnswer || 'N/A').substring(0, 50) + '...'
+    })));
+  }
 }
 
 main()

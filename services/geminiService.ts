@@ -242,7 +242,12 @@ export const generateQuestion = async (subject: Subject | string, difficulty: Di
                 responseMimeType: "application/json",
             }
         });
-        const jsonText = response.text;
+        let jsonText = '';
+        if (typeof response.text === 'function') {
+            jsonText = await response.text();
+        } else {
+            jsonText = String(response.text || '');
+        }
         const parsed = parseAiJson(jsonText);
         if (parsed.question) return parsed.question;
     } catch (geminiError: any) {
@@ -335,7 +340,13 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
             contents: [{ role: 'user', parts }],
             config: { responseMimeType: "application/json" }
         });
-        return parseAiJson(response.text);
+        let jsonText = '';
+        if (typeof response.text === 'function') {
+            jsonText = await response.text();
+        } else {
+            jsonText = String(response.text || '');
+        }
+        return parseAiJson(jsonText);
     } catch (e: any) {
         console.warn("Direct Gemini evaluation failed:", e?.message || e);
     }

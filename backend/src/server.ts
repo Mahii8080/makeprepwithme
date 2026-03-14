@@ -162,15 +162,22 @@ ${resumeContext}${prevContext}`;
     let question = '';
 
     if (genai) {
-      const response = await genai.models.generateContent({ 
-        model: 'gemini-2.0-flash', 
+      const response = await (genai.models || genai).generateContent({ 
+        model: 'gemini-1.5-flash', 
         contents: prompt, 
         config: { 
           temperature: 0.9, 
           maxOutputTokens: 500
         } 
       });
-      const raw = (response.text || '').trim();
+      // Handle different SDK response formats (.text() is standard, .text is a property in some)
+      let raw = '';
+      if (typeof response.text === 'function') {
+        raw = (await response.text()) || '';
+      } else {
+        raw = String(response.text || '');
+      }
+      raw = raw.trim();
       console.log('---GEMINI RETURNED---:', raw);
       
       let clean = raw;
@@ -236,67 +243,110 @@ Evaluate the answer and return a JSON object with exactly these fields:
 IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
 
   try {
-    let result: any;
-    if (genai) {
-      const contents: any = { role: 'user', parts: [{ text: prompt }] };
-      if (withVisual) {
-        contents.parts.push({
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: imageB64Data.split(',')[1] || imageB64Data
+    try {
+      let result: any;
+      
+      // 1. Try Gemini first
+      if (genai) {
+        try {
+          const contents: any = { role: 'user', parts: [{ text: prompt }] };
+          if (withVisual) {
+            contents.parts.push({
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: imageB64Data.split(',')[1] || imageB64Data
+              }
+            });
           }
-        });
+          
+          const response = await (genai.models || genai).generateContent({
+            model: 'gemini-1.5-flash', 
+            contents: [contents],
+            config: { responseMimeType: 'application/json' }
+          });
+          
+          let raw = '';
+          if (typeof response.text === 'function') {
+            raw = await response.text();
+          } else {
+            raw = response.text || '';
+          }
+          
+          result = JSON.parse(raw.trim().replace(/^```(json)?/, '').replace(/```$/, '').trim());
+          console.log('Gemini evaluation successful');
+        } catch (geminiErr: any) {
+          console.warn('Gemini evaluation failed, trying OpenAI:', geminiErr.message);
+        }
       }
-      const response = await genai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: [contents],
-        config: { responseMimeType: 'application/json' }
-      });
-      result = JSON.parse((response.text || '').trim().replace(/^```(json)?/, '').replace(/```$/, '').trim());
-    } else if (openai) {
-      const messages: any[] = [{ role: 'user', content: [{ type: 'text', text: prompt }] }];
-      if (withVisual) {
-        messages[0].content.push({
-          type: 'image_url',
-          image_url: { url: imageB64Data.startsWith('data:') ? imageB64Data : `data:image/jpeg;base64,${imageB64Data}` }
-        });
+
+      // 2. Try OpenAI if Gemini failed or wasn't available
+      if (!result && openai) {
+        try {
+          const messages: any[] = [{ role: 'user', content: [{ type: 'text', text: prompt }] }];
+          if (withVisual) {
+            messages[0].content.push({
+              type: 'image_url',
+              image_url: { url: imageB64Data.startsWith('data:') ? imageB64Data : `data:image/jpeg;base64,${imageB64Data}` }
+            });
+          }
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages,
+            response_format: { type: 'json_object' }
+          });
+          result = JSON.parse(completion.choices[0].message?.content || '{}');
+          console.log('OpenAI evaluation successful');
+        } catch (openaiErr: any) {
+          console.error('OpenAI evaluation failed:', openaiErr.message);
+        }
       }
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages,
-        response_format: { type: 'json_object' }
-      });
-      result = JSON.parse(completion.choices[0].message?.content || '{}');
+
+      // 3. Final Fallback: Static Rule-Based Evaluation (if all AIs fail)
+      if (!result) {
+        console.log('Using static evaluation fallback');
+        const answerWords = (answer || '').trim().split(/\s+/).length;
+        const score = answerWords > 15 ? 8 : answerWords > 5 ? 6 : 3;
+        result = {
+          score,
+          feedback: `(Emergency Mode) Your answer is ${answerWords} words long. ${answerWords > 10 ? 'Good attempt at explaining the concept.' : 'Try to provide more details in your response next time.'} Note: AI services are currently at quota capacity.`,
+          suggestedAnswer: `A good answer for "${question}" usually involves defining the concept clearly and providing a brief example of its use case.`,
+          nonVerbalFeedback: null
+        };
+      }
+
+      // ── PERSISTENCE LOGIC ──
+      if (result && typeof result.score === 'number' && sessionId && userId) {
+        try {
+          // 1. Create Question
+          const dbQuestion = await prisma.question.create({
+            data: {
+              sessionId,
+              text: question
+            }
+          });
+
+          // 2. Create Feedback
+          await prisma.feedback.create({
+            data: {
+              sessionId,
+              userId,
+              questionId: dbQuestion.id,
+              score: result.score,
+              feedback: result.feedback,
+              suggestedAnswer: result.suggestedAnswer
+            }
+          });
+          console.log(`Saved feedback for session ${sessionId}`);
+        } catch (dbErr) {
+          console.error('Database persistence failed:', dbErr);
+        }
+      }
+
+      return res.json(result || { score: 5, feedback: 'Evaluation unavailable', suggestedAnswer: 'N/A' });
+    } catch (innerErr: any) {
+      console.error('Inner evaluation loop error:', innerErr.message);
+      return res.json({ score: 5, feedback: 'Error processing AI response', suggestedAnswer: 'N/A' });
     }
-
-    // ── PERSISTENCE LOGIC ──
-    if (result && typeof result.score === 'number' && sessionId && userId) {
-      try {
-        // 1. Create Question
-        const dbQuestion = await prisma.question.create({
-          data: {
-            sessionId,
-            text: question
-          }
-        });
-
-        // 2. Create Feedback
-        await prisma.feedback.create({
-          data: {
-            sessionId,
-            userId,
-            questionId: dbQuestion.id,
-            score: result.score,
-            feedback: result.feedback
-          }
-        });
-        console.log(`Saved feedback for session ${sessionId}`);
-      } catch (dbErr) {
-        console.error('Database persistence failed:', dbErr);
-      }
-    }
-
-    return res.json(result || { score: 5, feedback: 'Evaluation unavailable', suggestedAnswer: 'N/A' });
   } catch (err: any) {
     console.error('evaluate-answer error:', err.message);
     return res.json({ score: 5, feedback: 'Issue evaluating answer', suggestedAnswer: 'N/A' });

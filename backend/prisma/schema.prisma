@@ -40,14 +40,15 @@ model Question {
 }
 
 model Feedback {
-  id         String   @id @default(cuid())
-  sessionId  String
-  userId     String
-  questionId String?  @unique
-  score      Int
-  feedback   String
-  createdAt  DateTime @default(now())
-  session    Session @relation(fields: [sessionId], references: [id])
-  user       User    @relation(fields: [userId], references: [id])
-  question   Question? @relation(fields: [questionId], references: [id])
+  id              String   @id @default(cuid())
+  sessionId       String
+  userId          String
+  questionId      String?  @unique
+  score           Int
+  feedback        String
+  suggestedAnswer String?  @db.Text
+  createdAt       DateTime @default(now())
+  session         Session  @relation(fields: [sessionId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
+  question        Question? @relation(fields: [questionId], references: [id])
 }
