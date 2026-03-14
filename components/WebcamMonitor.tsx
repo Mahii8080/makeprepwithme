@@ -7,42 +7,57 @@ interface WebcamMonitorProps {
 
 export const WebcamMonitor = forwardRef<HTMLVideoElement, WebcamMonitorProps>(
   ({ onUserPresent, onUserNotPresent }, ref) => {
+    const [error, setError] = React.useState<string | null>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const lastFrameRef = useRef<ImageData | null>(null);
     const detectionIntervalRef = useRef<number | null>(null);
-
+ 
     // Expose the video element to the parent
     useImperativeHandle(ref, () => videoRef.current!);
-
+ 
     useEffect(() => {
       const startWebcam = async () => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setError("Webcam not supported or blocked by browser (check HTTPS)");
+          return;
+        }
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480 },
+            video: true,
             audio: false,
           });
           streamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
+            videoRef.current.play().catch(e => {
+              console.error("Error playing video:", e);
+              setError("Click to enable video");
+            });
           }
-        } catch (err) {
+          setError(null);
+        } catch (err: any) {
           console.error("Error accessing webcam:", err);
+          if (err.name === 'NotAllowedError') {
+            setError("Permission denied");
+          } else {
+            setError("Webcam error: " + (err.message || "Unknown error"));
+          }
         }
       };
-
+ 
       startWebcam();
-
+ 
       // Basic presence/motion detection
       detectionIntervalRef.current = window.setInterval(() => {
         if (!videoRef.current || !canvasRef.current || videoRef.current.readyState < 2) return;
-
+ 
         const canvas = canvasRef.current;
         const video = videoRef.current;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (!ctx) return;
-
+ 
         canvas.width = 160; // Low res for performance
         canvas.height = 120;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -66,23 +81,17 @@ export const WebcamMonitor = forwardRef<HTMLVideoElement, WebcamMonitorProps>(
             if (diff > threshold) {
               onUserPresent();
             } else {
-              // If no motion, we might be still or absent
-              // For a simple mock, we'll assume absent if VERY still or truly absent
-              // In a real app, you'd use a face detection library here
-              // Let's be generous: only call NotPresent if diff is extremely low (meaning static or black)
               if (diff < threshold / 5) {
                 onUserNotPresent();
               } else {
-                  onUserPresent(); // Still enough motion to be "present"
+                onUserPresent();
               }
             }
           }
           lastFrameRef.current = currentFrame;
-        } catch (e) {
-          // Cross-origin issues or other errors
-        }
+        } catch (e) {}
       }, 1000);
-
+ 
       return () => {
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
@@ -92,16 +101,26 @@ export const WebcamMonitor = forwardRef<HTMLVideoElement, WebcamMonitorProps>(
         }
       };
     }, [onUserPresent, onUserNotPresent]);
-
+ 
     return (
-      <div className="relative w-full h-full bg-black flex items-center justify-center">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-full object-cover"
-        />
+      <div className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden rounded-lg">
+        {error ? (
+          <div className="flex flex-col items-center justify-center p-4 text-center">
+            <div className="w-12 h-12 bg-red-900/40 rounded-full flex items-center justify-center mb-3">
+              <span className="text-red-400 text-xl font-bold">!</span>
+            </div>
+            <p className="text-gray-300 text-sm font-medium mb-1">{error}</p>
+            <p className="text-gray-500 text-[10px]">Please check camera permissions in your browser bar.</p>
+          </div>
+        ) : (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover rounded-lg"
+          />
+        )}
         <canvas ref={canvasRef} className="hidden" />
       </div>
     );

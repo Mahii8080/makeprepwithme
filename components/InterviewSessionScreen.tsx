@@ -40,13 +40,13 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   const [absentLimitReached, setAbsentLimitReached] = useState(false);
   const [usePhotoMode, setUsePhotoMode] = useState(false);
 
-  // Refs — stable across renders
+
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);       // mirror of isListening for use inside recognition callbacks
   const isStartingRef = useRef(false);        // prevent double-start InvalidStateError
   const isLoadingRef = useRef(false);          // mirror of isLoading
   const showNextRef = useRef(false);           // mirror of showNextQuestionButton
-  const handleSubmitRef = useRef<(text: string) => void>(() => {});
+  const handleSubmitRef = useRef<(text: string) => void>(() => { });
   const chatEndRef = useRef<HTMLDivElement>(null);
   const sessionScores = useRef<number[]>([]);
   const previousQuestionsRef = useRef<string[]>([]);
@@ -56,18 +56,18 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   const mouthShapeIndex = useRef(0);
   const hasInitializedRef = useRef(false);
 
-  // Keep mirror refs in sync
+
   useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
   useEffect(() => { showNextRef.current = showNextQuestionButton; }, [showNextQuestionButton]);
 
-  // ── Speech synthesis ───────────────────────────────────────────────────────
+
   const speak = useCallback((text: string): Promise<void> => {
     return new Promise((resolve) => {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
-      
+
       // Safety timeout: resolve if speech synthesis hangs for more than 15s
       const timeout = setTimeout(() => {
         console.warn('Speech synthesis timed out.');
@@ -82,16 +82,16 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
           setAvatarState(speakingAvatarStates[mouthShapeIndex.current]);
         }
       };
-      utterance.onend = () => { 
+      utterance.onend = () => {
         clearTimeout(timeout);
-        setAvatarState('idle'); 
-        resolve(); 
+        setAvatarState('idle');
+        resolve();
       };
-      utterance.onerror = (err) => { 
+      utterance.onerror = (err) => {
         console.error('Speech synthesis error:', err);
         clearTimeout(timeout);
-        setAvatarState('idle'); 
-        resolve(); 
+        setAvatarState('idle');
+        resolve();
       };
       window.speechSynthesis.speak(utterance);
     });
@@ -235,7 +235,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
 
       // Find the last question asked by the model locally
       const lastQuestion = [...messages].reverse().find(m => m.role === 'model')?.text;
-      
+
       // If we can't find it in local state (rare race condition), check the ref
       const targetQuestion = lastQuestion || previousQuestionsRef.current[previousQuestionsRef.current.length - 1];
 
@@ -274,9 +274,9 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       );
     } catch (error) {
       console.error('Error in handleSubmit:', error);
-      setMessages(prev => [...prev, { 
-        role: 'system', 
-        text: 'I ran into an issue evaluating that. Let\'s move to the next question.' 
+      setMessages(prev => [...prev, {
+        role: 'system',
+        text: 'I ran into an issue evaluating that. Let\'s move to the next question.'
       } as ChatMessage]);
     } finally {
       setIsLoading(false);
@@ -299,7 +299,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     setIsLoading(false);
     setShowNextQuestionButton(false); // ensure we don't show "Next" if we failed
     await speak(question);
-    
+
     // Auto-start microphone after AI finishes speaking
     if (!isListeningRef.current && !isLoadingRef.current) {
       startListening();
@@ -310,7 +310,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     // Remove the last error message from the chat history
     setMessages(prev => {
       const last = prev[prev.length - 1];
-      if (last?.role === 'model' && last.text.includes('[Error:')) {
+      if (last?.role === 'model' && (last.text.includes('[Error:') || last.text.includes('connection'))) {
         return prev.slice(0, -1);
       }
       return prev;
@@ -349,15 +349,19 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   }, [messages]);
 
   // Webcam handlers
-  const handleUserPresent = () => { absentCountRef.current = 0; setIsUserPresent(true); };
-  const handleUserNotPresent = () => {
+  const handleUserPresent = useCallback(() => {
+    absentCountRef.current = 0;
+    setIsUserPresent(true);
+  }, []);
+
+  const handleUserNotPresent = useCallback(() => {
     absentCountRef.current += 1;
     setIsUserPresent(false);
     if (absentCountRef.current >= 10) {
       setAbsentLimitReached(true);
       setTimeout(() => handleEndSessionClick(), 1200);
     }
-  };
+  }, []);
 
   const handleEndSessionClick = () => {
     if (sessionScores.current.length > 0) {
@@ -480,8 +484,8 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
                     ? <span className="text-red-400 text-sm">{micError}</span>
                     : lastMessage?.role === 'model' && lastMessage.text && lastMessage.text.includes('[Error:')
                       ? <button onClick={handleRetry} className="bg-red-600 hover:bg-red-500 text-white text-xs px-4 py-2 rounded-full font-bold animate-bounce transition-colors">
-                          ⚠️ Error Occurred — Tap to Retry
-                        </button>
+                        ⚠️ Error Occurred — Tap to Retry
+                      </button>
                       : <span className="text-gray-500 text-base">Wait for AI or press the mic to skip wait</span>}
           </div>
 
@@ -491,7 +495,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
               {isListening
                 ? '🔴 Recording — pause briefly when done to auto-submit'
                 : isLoading ? ''
-                : 'Tap mic, speak your answer, then pause — it will auto-submit'}
+                  : 'Tap mic, speak your answer, then pause — it will auto-submit'}
             </p>
           </div>
         </div>
@@ -573,17 +577,16 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
                     </div>
                   ) : (
                     <div className="flex flex-col items-start gap-2 max-w-xl">
-                      <div className={`p-3 rounded-lg ${
-                        msg.role === 'user' ? 'bg-blue-600 text-white' :
-                        msg.role === 'model' ? 'bg-gray-700 text-gray-200' :
-                        'bg-transparent text-center w-full text-gray-400 italic'
-                      }`}>
+                      <div className={`p-3 rounded-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' :
+                          msg.role === 'model' ? 'bg-gray-700 text-gray-200' :
+                            'bg-transparent text-center w-full text-gray-400 italic'
+                        }`}>
                         {msg.text}
                       </div>
                       {msg.role === 'model' && msg.text.includes('[Error:') && (
-                         <button onClick={handleRetry} className="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded font-bold">
-                           Retry Question
-                         </button>
+                        <button onClick={handleRetry} className="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded font-bold">
+                          Retry Question
+                        </button>
                       )}
                     </div>
                   )}
@@ -621,9 +624,9 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
                   onKeyDown={(e) => { if (e.key === 'Enter' && userInput.trim() && !isLoading) handleSubmit(userInput); }}
                   placeholder={
                     isListening ? 'Speaking... (press Enter to submit early)' :
-                    isLoading ? 'Please wait...' :
-                    showNextQuestionButton ? 'Review feedback and click Next Question' :
-                    'Type your answer or click the mic to speak...'
+                      isLoading ? 'Please wait...' :
+                        showNextQuestionButton ? 'Review feedback and click Next Question' :
+                          'Type your answer or click the mic to speak...'
                   }
                   className="flex-1 bg-gray-700 text-white rounded-full py-3 px-5 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed"
                   disabled={isLoading && !isListening}

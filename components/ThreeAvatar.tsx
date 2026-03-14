@@ -222,58 +222,50 @@ const HumanoidModel: React.FC<{ state: AvatarState }> = ({ state }) => {
           </Box>
         </group>
 
-        {/* Sunglasses - Aviator Style with Gold Frame & Dark Tinted Lenses */}
+        {/* Professional Spectacles - Sleek Black Frames with Clear Lenses */}
         <group position={[0, 0.08, 0.38]}>
-          {/* Temple arms - gold metallic */}
+          {/* Temple arms - professional charcoal */}
           <Box args={[0.38, 0.015, 0.015]} position={[-0.32, 0, -0.06]} rotation={[0, 0.15, 0]}>
-            <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+            <meshStandardMaterial color="#334155" metalness={0.5} roughness={0.2} />
           </Box>
           <Box args={[0.38, 0.015, 0.015]} position={[0.32, 0, -0.06]} rotation={[0, -0.15, 0]}>
-            <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+            <meshStandardMaterial color="#334155" metalness={0.5} roughness={0.2} />
           </Box>
-
-          {/* Nose bridge - gold */}
-          <Box args={[0.06, 0.02, 0.04]} position={[0, -0.01, 0.01]}>
-            <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+ 
+          {/* Nose bridge - charcoal */}
+          <Box args={[0.08, 0.02, 0.04]} position={[0, -0.01, 0.01]}>
+            <meshStandardMaterial color="#334155" metalness={0.5} roughness={0.2} />
           </Box>
-
-          {/* Left lens - dark tinted aviator shape */}
+ 
+          {/* Left lens - Professional rectangular shape */}
           <group position={[-0.155, 0, 0]}>
-            {/* Lens fill - very dark tinted */}
-            <Sphere args={[0.1, 32, 16]} scale={[1, 0.75, 0.18]}>
-              <meshStandardMaterial color="#05051a" transparent opacity={0.92} metalness={0.3} roughness={0.1} />
+            {/* Clear Lens - Glass effect */}
+            <Sphere args={[0.1, 32, 16]} scale={[1, 0.75, 0.1]}>
+              <meshStandardMaterial color="#e2e8f0" transparent opacity={0.25} metalness={0.8} roughness={0.05} />
             </Sphere>
-            {/* Gold frame ring */}
-            <Sphere args={[0.105, 32, 8]} scale={[1, 0.76, 0.12]}>
-              <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} wireframe={false} />
+            {/* Charcoal Frame ring */}
+            <Sphere args={[0.105, 32, 8]} scale={[1, 0.76, 0.06]}>
+              <meshStandardMaterial color="#1e293b" metalness={0.3} roughness={0.5} />
             </Sphere>
-            {/* Lens top bar */}
-            <Box args={[0.21, 0.018, 0.02]} position={[0, 0.075, 0]}>
-              <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
-            </Box>
-            {/* Shine highlight on lens */}
-            <Sphere args={[0.055, 16, 8]} scale={[1, 0.5, 0.05]} position={[-0.02, 0.03, 0.09]}>
-              <meshStandardMaterial color="#ffffff" transparent opacity={0.18} />
+            {/* Lens shine highlight */}
+            <Sphere args={[0.04, 16, 8]} scale={[1, 0.4, 0.05]} position={[-0.03, 0.04, 0.06]}>
+              <meshStandardMaterial color="#ffffff" transparent opacity={0.4} />
             </Sphere>
           </group>
-
-          {/* Right lens - dark tinted aviator shape */}
+ 
+          {/* Right lens - Professional rectangular shape */}
           <group position={[0.155, 0, 0]}>
-            {/* Lens fill - very dark tinted */}
-            <Sphere args={[0.1, 32, 16]} scale={[1, 0.75, 0.18]}>
-              <meshStandardMaterial color="#05051a" transparent opacity={0.92} metalness={0.3} roughness={0.1} />
+            {/* Clear Lens - Glass effect */}
+            <Sphere args={[0.1, 32, 16]} scale={[1, 0.75, 0.1]}>
+              <meshStandardMaterial color="#e2e8f0" transparent opacity={0.25} metalness={0.8} roughness={0.05} />
             </Sphere>
-            {/* Gold frame ring */}
-            <Sphere args={[0.105, 32, 8]} scale={[1, 0.76, 0.12]}>
-              <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
+            {/* Charcoal Frame ring */}
+            <Sphere args={[0.105, 32, 8]} scale={[1, 0.76, 0.06]}>
+              <meshStandardMaterial color="#1e293b" metalness={0.3} roughness={0.5} />
             </Sphere>
-            {/* Lens top bar */}
-            <Box args={[0.21, 0.018, 0.02]} position={[0, 0.075, 0]}>
-              <meshStandardMaterial color="#c8a030" metalness={0.9} roughness={0.2} />
-            </Box>
-            {/* Shine highlight on lens */}
-            <Sphere args={[0.055, 16, 8]} scale={[1, 0.5, 0.05]} position={[0.02, 0.03, 0.09]}>
-              <meshStandardMaterial color="#ffffff" transparent opacity={0.18} />
+            {/* Lens shine highlight */}
+            <Sphere args={[0.04, 16, 8]} scale={[1, 0.4, 0.05]} position={[0.03, 0.04, 0.06]}>
+              <meshStandardMaterial color="#ffffff" transparent opacity={0.4} />
             </Sphere>
           </group>
         </group>

@@ -273,55 +273,40 @@ const MentorFaceSVG: React.FC<{ state: AvatarState }> = ({ state }) => {
       </g>
       <path d="M 141 136 Q 160 150 179 136" fill="none" stroke={skin2} strokeWidth="1" />
 
-      {/* ── SUNGLASSES (Aviator Style) ── */}
+      {/* ── SPECTACLES (Professional Specs) ── */}
       <g filter="url(#lensGlow)">
-        {/* Temple arms */}
-        <line x1="76" y1="130" x2="56" y2="132" stroke="url(#frameGrad)" strokeWidth="3.5" strokeLinecap="round" />
-        <line x1="184" y1="130" x2="204" y2="132" stroke="url(#frameGrad)" strokeWidth="3.5" strokeLinecap="round" />
+        {/* Frame / Temple arms */}
+        <line x1="76" y1="130" x2="56" y2="132" stroke="#334155" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="184" y1="130" x2="204" y2="132" stroke="#334155" strokeWidth="2.5" strokeLinecap="round" />
 
-        {/* Left lens - teardrop aviator shape */}
-        <path
-          d="M 78 118 Q 100 108 122 118 Q 130 128 125 146 Q 118 160 100 162 Q 82 160 75 146 Q 70 128 78 118 Z"
-          fill="url(#lensGradL)"
-          stroke="url(#frameGrad)"
+        {/* Left lens - Professional rectangular/rounded shape */}
+        <rect
+          x="75" y="118" width="48" height="38" rx="8"
+          fill="rgba(226, 232, 240, 0.2)"
+          stroke="#1e293b"
           strokeWidth="2.5"
         />
-        {/* Left lens shine */}
-        <path
-          d="M 82 118 Q 96 112 112 118 Q 107 115 96 113 Q 86 113 82 118 Z"
-          fill="url(#lensShineL)"
-        />
-        {/* Left lens inner highlight arc */}
-        <path d="M 85 122 Q 100 116 115 122" fill="none" stroke="white" strokeWidth="1" opacity="0.2" strokeLinecap="round" />
+        {/* Left lens shine highlight */}
+        <path d="M 80 125 Q 90 120 100 125" fill="none" stroke="white" strokeWidth="1.5" opacity="0.3" strokeLinecap="round" />
 
-        {/* Right lens - teardrop aviator shape */}
-        <path
-          d="M 138 118 Q 160 108 182 118 Q 190 128 185 146 Q 178 160 160 162 Q 142 160 135 146 Q 130 128 138 118 Z"
-          fill="url(#lensGradR)"
-          stroke="url(#frameGrad)"
+        {/* Right lens - Professional rectangular/rounded shape */}
+        <rect
+          x="137" y="118" width="48" height="38" rx="8"
+          fill="rgba(226, 232, 240, 0.2)"
+          stroke="#1e293b"
           strokeWidth="2.5"
         />
-        {/* Right lens shine */}
-        <path
-          d="M 142 118 Q 156 112 172 118 Q 167 115 156 113 Q 146 113 142 118 Z"
-          fill="url(#lensShineL)"
-        />
-        {/* Right lens inner highlight arc */}
-        <path d="M 145 122 Q 160 116 175 122" fill="none" stroke="white" strokeWidth="1" opacity="0.2" strokeLinecap="round" />
+        {/* Right lens shine highlight */}
+        <path d="M 142 125 Q 152 120 162 125" fill="none" stroke="white" strokeWidth="1.5" opacity="0.3" strokeLinecap="round" />
 
         {/* Nose bridge */}
         <path
-          d="M 122 122 Q 128 126 130 130 Q 132 126 138 122"
+          d="M 123 130 Q 130 128 137 130"
           fill="none"
-          stroke="url(#frameGrad)"
+          stroke="#1e293b"
           strokeWidth="2.8"
           strokeLinecap="round"
         />
-
-        {/* Top frame bar left */}
-        <path d="M 78 118 Q 100 110 122 118" fill="none" stroke="url(#frameGrad)" strokeWidth="3" strokeLinecap="round" />
-        {/* Top frame bar right */}
-        <path d="M 138 118 Q 160 110 182 118" fill="none" stroke="url(#frameGrad)" strokeWidth="3" strokeLinecap="round" />
       </g>
 
       {/* ── NOSE ── */}

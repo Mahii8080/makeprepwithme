@@ -272,7 +272,7 @@ export const evaluateAnswer = async (question: string, answer: string, subject: 
         const response = await fetch('http://localhost:4000/api/evaluate-answer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question, answer, subject, difficulty }),
+            body: JSON.stringify({ question, answer, subject, difficulty, imageB64Data }),
         });
         if (response.ok) {
             const data = await response.json();
