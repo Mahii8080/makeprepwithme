@@ -12,6 +12,7 @@ const defaultProfile: ProfileData = {
   lastSessionDate: null,
   badges: [],
   subjectStats: {},
+  totalQuestionsAnswered: 0,
 };
 
 interface Badge {
@@ -52,6 +53,15 @@ const saveProfileData = (profile: ProfileData) => {
   }
 };
 
+export const resetProfileData = (username: string) => {
+    const newProfile: ProfileData = {
+        ...defaultProfile,
+        username: username
+    };
+    saveProfileData(newProfile);
+    return newProfile;
+};
+
 const isSameDay = (date1: Date, date2: Date): boolean => {
     return date1.getFullYear() === date2.getFullYear() &&
            date1.getMonth() === date2.getMonth() &&
@@ -65,13 +75,14 @@ const isYesterday = (date1: Date, date2: Date): boolean => {
 }
 
 
-export const updateProfileOnSessionEnd = (subject: Subject | string, score: number) => {
+export const updateProfileOnSessionEnd = (subject: Subject | string, score: number, questionsCount: number = 0) => {
   const profile = getProfileData();
 
   // Update core stats
   const totalScore = profile.averageScore * profile.interviewsCompleted;
   profile.interviewsCompleted += 1;
   profile.averageScore = (totalScore + score) / profile.interviewsCompleted;
+  profile.totalQuestionsAnswered += questionsCount;
   
   // Update subject stats
   if (typeof subject === 'string') {
@@ -125,5 +136,20 @@ export const updateResume = (text: string) => {
     const profile = getProfileData();
     profile.resumeText = text;
     saveProfileData(profile);
+}
+
+export const clearAllStats = () => {
+    localStorage.removeItem(PROFILE_KEY);
+    window.location.reload(); // Refresh to apply changes
+}
+
+export const getBackendStats = async (userId: string) => {
+    try {
+        const res = await fetch(`http://localhost:4000/api/stats/${userId}`);
+        if (res.ok) return await res.json();
+    } catch (e) {
+        console.error('Failed to fetch backend stats:', e);
+    }
+    return null;
 }
 

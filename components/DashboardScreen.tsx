@@ -254,28 +254,31 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ onStartInterview, onV
 
   return (
     <>
-      <div className="min-h-screen p-4 sm:p-8 flex flex-col items-center w-full">
-        <header className="w-full max-w-6xl flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 sm:mb-12 gap-4 sm:gap-0">
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Welcome Back!</h1>
-            <p className="text-md sm:text-lg text-gray-400">Choose your preparation module to get started.</p>
+      <div className="min-h-screen p-4 sm:p-8 flex flex-col items-center w-full bg-gradient-to-b from-gray-950 via-gray-900 to-black">
+        <header className="w-full max-w-6xl flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-6">
+          <div className="animate-fade-in">
+            <h1 className="text-4xl sm:text-5xl font-black text-white mb-2 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">Elevate Your Career</h1>
+            <p className="text-lg text-gray-400 font-medium">Pick a path and start practicing your interview skills today.</p>
           </div>
-          <div className="flex flex-wrap gap-2 sm:gap-4 self-start sm:self-auto">
+          <div className="flex flex-wrap gap-3 sm:gap-4 self-start sm:self-auto">
             <button
               onClick={onNavigateToResumeScanner}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+              className="group relative bg-white/5 hover:bg-white/10 text-white font-bold py-3 px-6 rounded-2xl border border-white/10 transition-all flex items-center gap-2 overflow-hidden shadow-2xl"
             >
-              <span>📄</span> AI Resume Scanner
+              <span className="absolute inset-0 bg-blue-500/10 scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></span>
+              <span className="relative">📄 Scanner</span>
             </button>
             <button
               onClick={onViewProfile}
-              className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-2xl transition-all shadow-lg shadow-blue-600/20 active:scale-95"
             >
-              View Profile
+              Profile View
             </button>
           </div>
         </header>
-        <div className="w-full max-w-6xl space-y-12">
+
+
+        <div className="w-full max-w-6xl space-y-16 pb-20">
           {categories.map((category) => (
             <div key={category.title}>
               <h2 className="text-2xl sm:text-3xl font-semibold text-white mb-6 border-b-2 border-gray-700 pb-3">{category.title}</h2>

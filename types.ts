@@ -73,4 +73,5 @@ export interface ProfileData {
   badges: string[];
   subjectStats: { [key in Subject]?: number };
   resumeText?: string;
+  totalQuestionsAnswered: number;
 }

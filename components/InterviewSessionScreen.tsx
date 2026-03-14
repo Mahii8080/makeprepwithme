@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Subject, ChatMessage, Feedback, Difficulty } from '../types';
 import { generateQuestion, evaluateAnswer } from '../services/geminiService';
 import { updateProfileOnSessionEnd, getProfileData } from '../services/profileService';
+import { getCurrentUser } from '../services/authService';
 import { Avatar, AvatarState } from './Avatar';
 import { ThreeAvatar } from './ThreeAvatar';
 import { MicrophoneIcon } from './icons/MicrophoneIcon';
@@ -10,6 +11,7 @@ import { SendIcon } from './icons/SendIcon';
 import { StopIcon } from './icons/StopIcon';
 import { FeedbackCard } from './FeedbackCard';
 import { WebcamMonitor } from './WebcamMonitor';
+import { CameraIcon } from './icons/CameraIcon';
 
 // SpeechRecognition type shims
 declare global {
@@ -39,6 +41,8 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   const [isUserPresent, setIsUserPresent] = useState(true);
   const [absentLimitReached, setAbsentLimitReached] = useState(false);
   const [usePhotoMode, setUsePhotoMode] = useState(false);
+  const [prefetchedQuestion, setPrefetchedQuestion] = useState<string | null>(null);
+  const [isPrefetching, setIsPrefetching] = useState(false);
 
 
   const recognitionRef = useRef<any>(null);
@@ -51,10 +55,11 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   const sessionScores = useRef<number[]>([]);
   const previousQuestionsRef = useRef<string[]>([]);
   const absentCountRef = useRef(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<any>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouthShapeIndex = useRef(0);
   const hasInitializedRef = useRef(false);
+  const sessionIdRef = useRef<string | null>(null);
 
 
   useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
@@ -246,7 +251,16 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       setMessages(prev => [...prev, { role: 'user', text: currentInput } as ChatMessage]);
 
       const imageB64Data = difficulty === 'Advanced' ? captureFrame() : null;
-      const feedback: Feedback = await evaluateAnswer(targetQuestion || 'the previous topic', currentInput, subject, difficulty, imageB64Data);
+      const user = getCurrentUser();
+      const feedback: Feedback = await evaluateAnswer(
+        targetQuestion || 'the previous topic',
+        currentInput,
+        subject,
+        difficulty,
+        imageB64Data,
+        sessionIdRef.current || undefined,
+        user?.id
+      );
 
       if (!feedback.error) sessionScores.current.push(feedback.score);
 
@@ -268,7 +282,8 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
         feedback,
       } as ChatMessage]);
 
-      await speak(
+      // Move speak after state updates and don't await it to make UI responsive immediately
+      speak(
         feedback.feedback +
         (feedback.nonVerbalFeedback ? ` Now, regarding your on-camera presence: ${feedback.nonVerbalFeedback}` : '')
       );
@@ -280,7 +295,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       } as ChatMessage]);
     } finally {
       setIsLoading(false);
-      setAvatarState('idle');
+      // We don't set avatar state to idle here because it might still be speaking feedback
       setShowNextQuestionButton(true);
     }
   }, [messages, subject, difficulty, speak]);
@@ -288,25 +303,56 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   // Keep the ref always pointing at the latest handleSubmit
   useEffect(() => { handleSubmitRef.current = handleSubmit; }, [handleSubmit]);
 
+  // ── Pre-fetch helper ─────────────────────────────────────────────────────
+  const prefetchNextQuestion = useCallback(async (currentPreviousQuestions: string[]) => {
+    if (isPrefetching) return;
+    try {
+      setIsPrefetching(true);
+      const resumeText = getProfileData().resumeText;
+      const nextQ = await generateQuestion(subject, difficulty, currentPreviousQuestions, resumeText);
+      setPrefetchedQuestion(nextQ);
+    } catch (err) {
+      console.warn('AI: Prefetch failed:', err);
+    } finally {
+      setIsPrefetching(false);
+    }
+  }, [subject, difficulty, isPrefetching]);
+
   // ── Start new question turn ───────────────────────────────────────────────
   const startNewTurn = useCallback(async () => {
     setShowNextQuestionButton(false);
-    setIsLoading(true);
-    const resumeText = getProfileData().resumeText;
-    const question = await generateQuestion(subject, difficulty, previousQuestionsRef.current, resumeText);
+    
+    let question = '';
+    
+    // Use prefetched question if available
+    if (prefetchedQuestion) {
+      question = prefetchedQuestion;
+      setPrefetchedQuestion(null);
+    } else {
+      setIsLoading(true);
+      const resumeText = getProfileData().resumeText;
+      question = await generateQuestion(subject, difficulty, previousQuestionsRef.current, resumeText);
+    }
+
     previousQuestionsRef.current.push(question);
     setMessages(prev => [...prev, { role: 'model', text: question }]);
     setIsLoading(false);
-    setShowNextQuestionButton(false); // ensure we don't show "Next" if we failed
+    setShowNextQuestionButton(false);
+    
+    // AI speaks question
     await speak(question);
 
     // Auto-start microphone after AI finishes speaking
     if (!isListeningRef.current && !isLoadingRef.current) {
       startListening();
     }
-  }, [subject, difficulty, speak]);
+
+    // Start pre-fetching the NEXT question in the background
+    prefetchNextQuestion(previousQuestionsRef.current);
+  }, [subject, difficulty, speak, prefetchedQuestion, prefetchNextQuestion]);
 
   const handleRetry = () => {
+    setPrefetchedQuestion(null); // Clear any potentially stale prefetch
     // Remove the last error message from the chat history
     setMessages(prev => {
       const last = prev[prev.length - 1];
@@ -320,8 +366,9 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
 
   // ── Frame capture (Advanced mode) ─────────────────────────────────────────
   const captureFrame = (): string | null => {
-    if (videoRef.current && canvasRef.current && videoRef.current.readyState >= 2) {
-      const video = videoRef.current;
+    const videoElement = videoRef.current?.video;
+    if (videoElement && canvasRef.current && videoElement.readyState >= 2) {
+      const video = videoElement;
       const canvas = canvasRef.current;
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -339,7 +386,34 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
     setMessages([{ role: 'system', text: `Starting a new ${difficulty} session for ${subject}. Let's begin.` }]);
-    startNewTurn();
+    
+    // Create session in backend
+    const initSession = async () => {
+      const user = getCurrentUser();
+      if (user) {
+        try {
+          const res = await fetch('http://localhost:4000/api/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              userId: user.id, 
+              subject, 
+              difficulty,
+              username: user.username
+            })
+          });
+          if (res.ok) {
+            const session = await res.json();
+            sessionIdRef.current = session.id;
+          }
+        } catch (e) {
+          console.warn('Backend session could not be created:', e);
+        }
+      }
+      startNewTurn();
+    };
+
+    initSession();
     return () => { window.speechSynthesis.cancel(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -364,12 +438,28 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   }, []);
 
   const handleEndSessionClick = () => {
+    const avgScore = sessionScores.current.length > 0 
+      ? sessionScores.current.reduce((a, b) => a + b, 0) / sessionScores.current.length 
+      : 0;
+
     if (sessionScores.current.length > 0) {
-      const avg = sessionScores.current.reduce((a, b) => a + b, 0) / sessionScores.current.length;
-      updateProfileOnSessionEnd(subject, avg);
+      updateProfileOnSessionEnd(subject, avgScore, sessionScores.current.length);
     }
+    
+    // Notify backend
+    if (sessionIdRef.current) {
+        fetch(`http://localhost:4000/api/sessions/${sessionIdRef.current}/end`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ score: avgScore })
+        }).catch(e => console.warn('Failed to notify backend session end:', e));
+    }
+
     window.speechSynthesis.cancel();
     stopListening();
+    if (videoRef.current?.stop) {
+      videoRef.current.stop();
+    }
     onEndSession();
   };
 
@@ -421,9 +511,18 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
             <h1 className="text-xl sm:text-2xl font-bold text-white">{subject}</h1>
             <span className="text-sm font-semibold px-2 py-1 rounded-md bg-red-600">{difficulty}</span>
           </div>
-          <button onClick={handleEndSessionClick} className="bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
-            End Session
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => videoRef.current?.start()}
+              className="p-2.5 rounded-full bg-blue-600/30 hover:bg-blue-600/50 text-white border border-blue-500/40 transition-all flex items-center justify-center"
+              title="Start/Retry Camera"
+            >
+              <CameraIcon className="w-5 h-5" />
+            </button>
+            <button onClick={handleEndSessionClick} className="bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors">
+              End Session
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 flex items-stretch justify-center relative px-6">
@@ -431,8 +530,9 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
             <div className="max-w-lg w-full flex flex-col items-center">
               <div className="w-full max-w-sm aspect-[3/4] bg-blue-900/10 rounded-xl border border-blue-500/20 shadow-2xl overflow-hidden backdrop-blur-md relative">
                 <div className="absolute inset-0 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none" />
-                {usePhotoMode
-                  ? <img src="/cartoon-3d-avatar.png" alt="AI Interviewer" className="w-full h-full object-cover" />
+                {/* Default: premium 2D SVG mentor. Alternate: 3D Studio */}
+                {!usePhotoMode
+                  ? <Avatar state={avatarState} sizeClassName="w-full h-full p-8" />
                   : <ThreeAvatar state={avatarState} />
                 }
                 <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent flex justify-between items-end">
@@ -441,7 +541,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
                     <span className="text-xs font-semibold text-blue-200 tracking-wider uppercase">AI Interviewer</span>
                   </div>
                   <button onClick={() => setUsePhotoMode(v => !v)} className="text-[10px] bg-blue-600/40 hover:bg-blue-600/60 text-white px-2 py-1 rounded border border-blue-400/30 transition-colors">
-                    {usePhotoMode ? 'Switch to 3D' : 'Ultra Realistic'}
+                    {usePhotoMode ? '2D View' : '3D Studio'}
                   </button>
                 </div>
               </div>

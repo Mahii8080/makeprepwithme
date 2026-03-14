@@ -29,8 +29,20 @@ app.get('/api/health', (_req, res) => {
 
 app.post('/api/sessions', async (req, res) => {
   try {
-    const { userId, subject, company, difficulty } = req.body;
+    const { userId, subject, company, difficulty, username } = req.body;
     if (!userId || !subject || !difficulty) return res.status(400).json({ error: 'missing fields' });
+    
+    // Ensure the user exists in the database (Sync from local-only storage if needed)
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: { username: username || 'User' },
+      create: { 
+        id: userId, 
+        email: `${userId}@placeholder.com`, 
+        username: username || 'User'
+      }
+    });
+
     const session = await prisma.session.create({ data: { userId, subject, company, difficulty } });
     res.json(session);
   } catch (err) {
@@ -59,11 +71,12 @@ app.post('/api/generate-question', async (req, res) => {
 
   const getFallbackQuestion = () => {
     const fallbacks = [
-      `Could you elaborate on your experience with ${subject}?`,
-      `What do you consider your greatest strength when working with ${subject}?`,
-      `Can you describe a challenging problem you solved related to ${subject}?`,
-      `How do you keep your skills sharp and up to date with ${subject}?`,
-      `What are some best practices you follow when working with ${subject}?`
+      `What is the difference between a list and a tuple in ${subject}?`,
+      `Can you explain what a dictionary/hashmap is in ${subject}?`,
+      `How do you define a function or method in ${subject}?`,
+      `What are the most common data types available in ${subject}?`,
+      `Explain the concept of 'loops' in ${subject} with a simple example.`,
+      `What is ${subject} and what are its primary use cases?`
     ];
     return fallbacks[Math.floor(Math.random() * fallbacks.length)];
   };
@@ -88,10 +101,10 @@ app.post('/api/generate-question', async (req, res) => {
     // ── Difficulty-based depth instructions ──
     const depthInstruction =
       difficulty === 'Beginner'
-        ? `Ask a BASIC, FUNDAMENTAL question about '${subject}' — definitions, syntax, or simple concepts. Examples of the style: "What is a list in Python?", "What does the final keyword do in Java?", "What is a variable?", "What is an if-else statement?", "What is a function?". The question must be specific to the domain '${subject}'.`
+        ? `Ask an EXTREMELY BASIC, RELATABLE question about '${subject}'. Focus on core definitions and simple concepts. Perfect examples: "What is ${subject}?", "What is a variable?", "Why is '${subject}' popular?". Keep it conversational and very easy.`
         : difficulty === 'Intermediate'
-          ? `Ask an INTERMEDIATE-LEVEL question about '${subject}' that tests practical understanding. Examples of the style: "What is the difference between an abstract class and an interface in Java?", "How does the GIL work in Python?", "What is the time complexity of QuickSort?", "Explain how closures work in JavaScript.". The question must directly target knowledge of '${subject}'.`
-          : `Ask an ADVANCED, IN-DEPTH question about '${subject}' that tests expert-level mastery. Examples of the style: "How does Python's memory management and garbage collection work?", "Explain the CAP theorem and when you would choose CP over AP.", "What are the trade-offs between B-Trees and LSM-Trees?", "How does the V8 engine optimize JavaScript execution?". The question must reveal deep expertise in '${subject}'.`;
+          ? `Ask a practical, RELATABLE question about '${subject}'. Focus on how things are used in real projects. Example: "How do you handle errors in ${subject}?", "What is the difference between a list and an array?".`
+          : `Ask an advanced but DIRECT technical question about '${subject}'. Focus on architecture and performance. Example: "How does ${subject} manage memory?", "Explain the trade-offs of using ${subject} for high-traffic apps?".`;
 
     // ── Subject-specific topical focus ──
     let topicFocus = '';
@@ -137,10 +150,13 @@ INSTRUCTIONS:
 - ${depthInstruction}
 - ${topicFocus}
 - Ask EXACTLY ONE question. No multiple parts, no sub-questions, no follow-ups.
-- Keep the question SHORT and COMPLETE — under 40 words. It MUST end with a question mark (?).
-- Do NOT add any preamble, greeting, filler, or commentary (e.g., no "Okay", "Great", "Sure", "Here's your question:", "Alright candidate").
-- Start the question directly (e.g., "What is...", "How does...", "Explain...", "What is the difference between...", "Can you describe...").
-- Output ONLY the complete question text, nothing else. The question MUST be grammatically complete.
+- STRICTLY NO BEHAVIORAL QUESTIONS. Do NOT ask about "learning habits", "strengths", "weaknesses", or "experience".
+- FOCUS ON CORE TECHNICAL KNOWLEDGE: Ask about data types, syntax, memory, keywords, or specific features of ${subject}.
+- FOR BEGINNER LEVEL: If this is the FIRST question (previousQuestions is empty), you may simply ask "What is ${subject} and what is it used for?" or "What are the common data types in ${subject}?".
+- Keep the question SHORT and COMPLETE — under 30 words. It MUST end with a question mark (?).
+- Do NOT add any preamble, greeting, filler, or commentary.
+- Start the question directly.
+- Output ONLY the complete question text, nothing else.
 ${resumeContext}${prevContext}`;
 
     let question = '';
@@ -194,9 +210,9 @@ ${resumeContext}${prevContext}`;
   }
 });
 
-// Evaluate answer server-side (avoids CORS when calling AI from browser)
+// Evaluate answer server-side and PERSIST to DB
 app.post('/api/evaluate-answer', async (req, res) => {
-  const { question, answer, subject, difficulty, imageB64Data } = req.body;
+  const { sessionId, userId, question, answer, subject, difficulty, imageB64Data } = req.body;
   
   if (!question || !answer || !subject || !difficulty) {
     return res.status(400).json({ error: 'question, answer, subject & difficulty required' });
@@ -220,12 +236,9 @@ Evaluate the answer and return a JSON object with exactly these fields:
 IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
 
   try {
+    let result: any;
     if (genai) {
-      const contents: any = {
-        role: 'user',
-        parts: [{ text: prompt }]
-      };
-
+      const contents: any = { role: 'user', parts: [{ text: prompt }] };
       if (withVisual) {
         contents.parts.push({
           inlineData: {
@@ -234,58 +247,105 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
           }
         });
       }
-
       const response = await genai.models.generateContent({
-        model: 'gemini-2.0-flash', // Using 2.0-flash for reliability
+        model: 'gemini-2.0-flash',
         contents: [contents],
         config: { responseMimeType: 'application/json' }
       });
-
-      const raw = (response.text || '').trim();
-      let clean = raw;
-      if (clean.startsWith('```')) {
-        clean = clean.replace(/^```(json)?/, '').replace(/```$/, '').trim();
-      }
-      const parsed = JSON.parse(clean);
-      return res.json(parsed);
+      result = JSON.parse((response.text || '').trim().replace(/^```(json)?/, '').replace(/```$/, '').trim());
     } else if (openai) {
-      const messages: any[] = [{ 
-        role: 'user', 
-        content: [
-          { type: 'text', text: prompt }
-        ]
-      }];
-
+      const messages: any[] = [{ role: 'user', content: [{ type: 'text', text: prompt }] }];
       if (withVisual) {
         messages[0].content.push({
           type: 'image_url',
           image_url: { url: imageB64Data.startsWith('data:') ? imageB64Data : `data:image/jpeg;base64,${imageB64Data}` }
         });
       }
-
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages,
         response_format: { type: 'json_object' }
       });
-      const content = completion.choices[0].message?.content || '{}';
-      return res.json(JSON.parse(content));
-    } else {
-      return res.json({
-        score: 5,
-        feedback: 'No AI service is configured.',
-        suggestedAnswer: 'N/A',
-        nonVerbalFeedback: null
-      });
+      result = JSON.parse(completion.choices[0].message?.content || '{}');
     }
+
+    // ── PERSISTENCE LOGIC ──
+    if (result && typeof result.score === 'number' && sessionId && userId) {
+      try {
+        // 1. Create Question
+        const dbQuestion = await prisma.question.create({
+          data: {
+            sessionId,
+            text: question
+          }
+        });
+
+        // 2. Create Feedback
+        await prisma.feedback.create({
+          data: {
+            sessionId,
+            userId,
+            questionId: dbQuestion.id,
+            score: result.score,
+            feedback: result.feedback
+          }
+        });
+        console.log(`Saved feedback for session ${sessionId}`);
+      } catch (dbErr) {
+        console.error('Database persistence failed:', dbErr);
+      }
+    }
+
+    return res.json(result || { score: 5, feedback: 'Evaluation unavailable', suggestedAnswer: 'N/A' });
   } catch (err: any) {
     console.error('evaluate-answer error:', err.message);
-    return res.json({
-      score: 5,
-      feedback: 'There was an issue evaluating your answer.',
-      suggestedAnswer: 'N/A',
-      nonVerbalFeedback: null
+    return res.json({ score: 5, feedback: 'Issue evaluating answer', suggestedAnswer: 'N/A' });
+  }
+});
+
+app.post('/api/sessions/:id/end', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { score } = req.body;
+    const session = await prisma.session.update({
+      where: { id },
+      data: { endedAt: new Date(), score }
     });
+    res.json(session);
+  } catch (err) {
+    res.status(500).json({ error: 'failed to end session' });
+  }
+});
+
+app.get('/api/stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const sessions = await prisma.session.findMany({
+      where: { userId },
+      include: { feedbacks: true }
+    });
+
+    const totalAttempts = sessions.length;
+    const totalQuestions = sessions.reduce((acc, s) => acc + s.feedbacks.length, 0);
+    const avgScore = sessions.length > 0 
+      ? sessions.reduce((acc, s) => acc + (s.score || 0), 0) / sessions.length 
+      : 0;
+
+    res.json({
+      totalAttempts,
+      totalQuestions,
+      avgScore,
+      sessions: sessions.map(s => ({
+        id: s.id,
+        subject: s.subject,
+        difficulty: s.difficulty,
+        score: s.score,
+        date: s.startedAt,
+        questions: s.feedbacks.length
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'failed to fetch stats' });
   }
 });
 

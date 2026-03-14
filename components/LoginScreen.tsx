@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { registerUser, loginUser, isLoggedIn } from '../services/authService';
+import { resetProfileData } from '../services/profileService';
 
 interface LoginScreenProps {
   onGetStarted: () => void;
@@ -60,6 +61,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onGetStarted }) => {
     setLoading(true);
     const result = registerUser(username, email, password);
     if (result.success) {
+      resetProfileData(username);
       setMessage('✅ Account created! Redirecting...');
       setTimeout(() => {
         onGetStarted();
