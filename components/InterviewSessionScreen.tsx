@@ -27,6 +27,8 @@ interface InterviewSessionScreenProps {
   onEndSession: () => void;
 }
 
+const API_BASE_URL = 'http://localhost:4000';
+
 const speakingAvatarStates: AvatarState[] = ['speaking', 'speaking_o', 'speaking_e', 'speaking_m'];
 
 const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject, difficulty, onEndSession }) => {
@@ -392,7 +394,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       const user = getCurrentUser();
       if (user) {
         try {
-          const res = await fetch('http://localhost:4000/api/sessions', {
+          const res = await fetch(`${API_BASE_URL}/api/sessions`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -448,7 +450,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     
     // Notify backend
     if (sessionIdRef.current) {
-        fetch(`http://localhost:4000/api/sessions/${sessionIdRef.current}/end`, {
+        fetch(`${API_BASE_URL}/api/sessions/${sessionIdRef.current}/end`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ score: avgScore })

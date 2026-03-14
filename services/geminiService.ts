@@ -4,6 +4,7 @@ import OpenAI from "openai";
 import { Subject, Feedback, Difficulty } from '../types';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+const BACKEND_URL = 'http://localhost:4000';
 
 const parseAiJson = (text: string) => {
     try {
@@ -215,7 +216,7 @@ const getQuestionGenerationPrompt = (subject: Subject | string, difficulty: Diff
 export const generateQuestion = async (subject: Subject | string, difficulty: Difficulty, previousQuestions: string[] = [], resumeText?: string): Promise<string> => {
     // ── PRIMARY: Try backend API for specialized question generation ──
     try {
-        const response = await fetch('http://localhost:4000/api/generate-question', {
+        const response = await fetch(`${BACKEND_URL}/api/generate-question`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subject, difficulty, previousQuestions, resumeText }),
@@ -286,7 +287,7 @@ export const generateQuestion = async (subject: Subject | string, difficulty: Di
 export const evaluateAnswer = async (question: string, answer: string, subject: Subject | string, difficulty: Difficulty, imageB64Data?: string | null, sessionId?: string, userId?: string): Promise<Feedback> => {
     // ── PRIMARY: Call the backend API (avoids CORS errors when calling AI from browser) ──
     try {
-        const response = await fetch('http://localhost:4000/api/evaluate-answer', {
+        const response = await fetch(`${BACKEND_URL}/api/evaluate-answer`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ question, answer, subject, difficulty, imageB64Data, sessionId, userId }),
