@@ -163,7 +163,7 @@ ${resumeContext}${prevContext}`;
 
     if (genai) {
       const response = await (genai.models || genai).generateContent({ 
-        model: 'gemini-1.5-flash', 
+        model: 'gemini-2.0-flash', 
         contents: prompt, 
         config: { 
           temperature: 0.9, 
@@ -237,7 +237,7 @@ ${withVisual ? "\nAlso analyze the candidate's facial expression for confidence,
 Evaluate the answer and return a JSON object with exactly these fields:
 - "score": integer from 0-10 (0 = completely wrong, 5 = partially correct, 8-9 = very good, 10 = perfect)
 - "feedback": string (2-4 sentences) — explain what was correct, what was missing/wrong, and how to improve
-- "suggestedAnswer": string (3-6 sentences) — provide a clear, complete model answer the candidate should have given
+- "suggestedAnswer": string (3-6 sentences) — provide a specific, professional improvement of the candidate's answer. This should show "how their answer should have been" for a perfect score.
 - "nonVerbalFeedback": ${withVisual ? "string — 1-2 sentences about body language, confidence, eye contact from the image" : "null"}
 
 IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
@@ -260,12 +260,13 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
           }
           
           const response = await (genai.models || genai).generateContent({
-            model: 'gemini-1.5-flash', 
+            model: 'gemini-2.0-flash', 
             contents: [contents],
             config: { responseMimeType: 'application/json' }
           });
           
           let raw = '';
+          // New SDK 1.x has .text as a getter, older SDK had it as a method
           if (typeof response.text === 'function') {
             raw = await response.text();
           } else {
@@ -309,7 +310,7 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
         result = {
           score,
           feedback: `(Emergency Mode) Your answer is ${answerWords} words long. ${answerWords > 10 ? 'Good attempt at explaining the concept.' : 'Try to provide more details in your response next time.'} Note: AI services are currently at quota capacity.`,
-          suggestedAnswer: `A good answer for "${question}" usually involves defining the concept clearly and providing a brief example of its use case.`,
+          suggestedAnswer: `A perfect answer for "${question}" should clearly define the concept, mention its key properties, and provide a real-world example to demonstrate practical knowledge.`,
           nonVerbalFeedback: null
         };
       }

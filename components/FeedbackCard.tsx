@@ -69,8 +69,10 @@ export const FeedbackCard: React.FC<FeedbackCardProps> = ({ feedback }) => {
       )}
 
       <div>
-        <h4 className="font-semibold text-green-400 mb-1">Suggested Answer:</h4>
-        <p className="text-gray-300 italic">{feedback.suggestedAnswer}</p>
+        <h4 className="font-semibold text-green-400 mb-1">How your answer should be:</h4>
+        <div className="bg-green-900/20 border border-green-500/30 rounded p-3">
+          <p className="text-gray-300 italic leading-relaxed">{feedback.suggestedAnswer}</p>
+        </div>
       </div>
     </div>
   );

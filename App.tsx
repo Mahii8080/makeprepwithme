@@ -15,7 +15,7 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(isLoggedIn());
 
   useEffect(() => {
-    // Check if user is logged in on app load
+
     if (isLoggedIn()) {
       setIsAuthenticated(true);
       setView('dashboard');
