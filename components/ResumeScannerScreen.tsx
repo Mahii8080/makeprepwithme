@@ -46,9 +46,9 @@ export const ResumeScannerScreen: React.FC<ResumeScannerScreenProps> = ({ onBack
                 setExtractedText(analysis);
                 updateResume(analysis);
 
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Resume parsing error:", err);
-                setError("Failed to parse the resume. Ensure it is a clear image or readable PDF/PPT.");
+                setError(err.message || "Failed to parse the resume. Ensure it is a clear image or readable PDF.");
             } finally {
                 setIsProcessing(false);
             }

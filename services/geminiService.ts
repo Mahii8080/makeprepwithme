@@ -67,10 +67,14 @@ let genAI: any | null = null;
 let genAIKey: string = '';
 const getGenAI = () => {
     const apiKey = getGeminiApiKey();
+    if (!apiKey) return null;
+    
     // Re-initialize if key changed or was missing before
     if (!genAI || apiKey !== genAIKey) {
         genAIKey = apiKey;
-        genAI = new GoogleGenAI({ apiKey });
+        // The official SDK takes the string directly, or an object { apiKey }. 
+        // Based on scripts/test_new_key.js, we use the string.
+        genAI = new GoogleGenAI(apiKey);
     }
     return genAI;
 };
@@ -247,19 +251,19 @@ export const generateQuestion = async (subject: Subject | string, difficulty: Di
     // ── SECONDARY: Direct Gemini call ──
     const prompt = getQuestionGenerationPrompt(subject, difficulty, previousQuestions, resumeText);
     try {
-        const response = await getGenAI().models.generateContent({
+        const genaiInstance = getGenAI();
+        if (!genaiInstance) throw new Error("No Gemini instance");
+
+        const model = genaiInstance.getGenerativeModel({ 
             model: GEMINI_MODEL,
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
+            generationConfig: {
                 responseMimeType: "application/json",
             }
         });
-        let jsonText = '';
-        if (typeof response.text === 'function') {
-            jsonText = await response.text();
-        } else {
-            jsonText = String(response.text || '');
-        }
+
+        const result = await model.generateContent(prompt);
+        const response = result.response;
+        const jsonText = response.text();
         const parsed = parseAiJson(jsonText);
         if (parsed.question) return parsed.question;
     } catch (geminiError: any) {
@@ -341,23 +345,28 @@ ${withVisual ? '- "nonVerbalFeedback": string — 1-2 sentences about body langu
 IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
 
     try {
+        const genaiInstance = getGenAI();
+        if (!genaiInstance) throw new Error("No Gemini instance");
+
+        const model = genaiInstance.getGenerativeModel({ 
+            model: GEMINI_MODEL,
+            generationConfig: {
+                responseMimeType: "application/json",
+            }
+        });
+
         const parts: any[] = [{ text: prompt }];
         if (withVisual && imageB64Data) {
             parts.push({
                 inlineData: { mimeType: 'image/jpeg', data: imageB64Data.split(',')[1] }
             });
         }
-        const response = await getGenAI().models.generateContent({
-            model: GEMINI_MODEL,
-            contents: [{ role: 'user', parts }],
-            config: { responseMimeType: "application/json" }
+
+        const result = await model.generateContent({
+            contents: [{ role: 'user', parts }]
         });
-        let jsonText = '';
-        if (typeof response.text === 'function') {
-            jsonText = await response.text();
-        } else {
-            jsonText = String(response.text || '');
-        }
+        
+        const jsonText = result.response.text();
         return parseAiJson(jsonText);
     } catch (e: any) {
         console.warn("Direct Gemini evaluation failed:", e?.message || e);
@@ -391,11 +400,12 @@ export const askCustomQuestion = async (question: string, subject: Subject | str
     const prompt = `You are an interview coach. Answer: "${question}" for ${subject} (${difficulty}). Concise, under 150 words.`;
 
     try {
-        const response = await getGenAI().models.generateContent({
-            model: GEMINI_MODEL,
-            contents: [{ role: 'user', parts: [{ text: prompt }] }]
-        });
-        return response.text();
+        const genaiInstance = getGenAI();
+        if (!genaiInstance) throw new Error("No Gemini instance");
+        
+        const model = genaiInstance.getGenerativeModel({ model: GEMINI_MODEL });
+        const result = await model.generateContent(prompt);
+        return result.response.text();
     } catch (e) {
         const openai = getOpenAI();
         if (openai) {
@@ -414,10 +424,11 @@ export const askCustomQuestion = async (question: string, subject: Subject | str
 export const analyzeResumeFile = async (base64Data: string, mimeType: string): Promise<string> => {
     try {
         const genaiInstance = getGenAI();
-        const model = genaiInstance.models || genaiInstance;
+        if (!genaiInstance) throw new Error("No Gemini instance available");
+
+        const model = genaiInstance.getGenerativeModel({ model: GEMINI_MODEL });
         
-        const response = await model.generateContent({
-            model: GEMINI_MODEL,
+        const result = await model.generateContent({
             contents: [{
                 role: 'user',
                 parts: [
@@ -427,13 +438,7 @@ export const analyzeResumeFile = async (base64Data: string, mimeType: string): P
             }]
         });
 
-        let extracted = '';
-        if (typeof response.text === 'function') {
-            extracted = await response.text();
-        } else {
-            extracted = String(response.text || '');
-        }
-        
+        const extracted = result.response.text();
         if (!extracted) throw new Error("AI returned empty analysis.");
         return extracted;
 

@@ -15,7 +15,7 @@ const port = process.env.PORT || 4000;
 
 let genai: any = null;
 if (process.env.GEMINI_API_KEY) {
-  genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  genai = new GoogleGenAI(process.env.GEMINI_API_KEY);
 }
 
 let openai: OpenAI | null = null;
@@ -162,22 +162,16 @@ ${resumeContext}${prevContext}`;
     let question = '';
 
     if (genai) {
-      const response = await (genai.models || genai).generateContent({ 
-        model: 'gemini-2.0-flash', 
-        contents: prompt, 
-        config: { 
-          temperature: 0.9, 
+      const model = genai.getGenerativeModel({ 
+        model: 'gemini-2.0-flash',
+        generationConfig: {
+          temperature: 0.9,
           maxOutputTokens: 500
-        } 
+        }
       });
-      // Handle different SDK response formats (.text() is standard, .text is a property in some)
-      let raw = '';
-      if (typeof response.text === 'function') {
-        raw = (await response.text()) || '';
-      } else {
-        raw = String(response.text || '');
-      }
-      raw = raw.trim();
+
+      const result = await model.generateContent(prompt);
+      const raw = result.response.text().trim();
       console.log('---GEMINI RETURNED---:', raw);
       
       let clean = raw;
@@ -249,9 +243,14 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
       // 1. Try Gemini first
       if (genai) {
         try {
-          const contents: any = { role: 'user', parts: [{ text: prompt }] };
+          const model = genai.getGenerativeModel({ 
+            model: 'gemini-2.0-flash',
+            generationConfig: { responseMimeType: 'application/json' }
+          });
+
+          const parts: any = [{ text: prompt }];
           if (withVisual) {
-            contents.parts.push({
+            parts.push({
               inlineData: {
                 mimeType: 'image/jpeg',
                 data: imageB64Data.split(',')[1] || imageB64Data
@@ -259,19 +258,11 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
             });
           }
           
-          const response = await (genai.models || genai).generateContent({
-            model: 'gemini-2.0-flash', 
-            contents: [contents],
-            config: { responseMimeType: 'application/json' }
+          const resultRes = await model.generateContent({
+            contents: [{ role: 'user', parts }]
           });
           
-          let raw = '';
-          // New SDK 1.x has .text as a getter, older SDK had it as a method
-          if (typeof response.text === 'function') {
-            raw = await response.text();
-          } else {
-            raw = response.text || '';
-          }
+          const raw = resultRes.response.text();
           
           result = JSON.parse(raw.trim().replace(/^```(json)?/, '').replace(/```$/, '').trim());
           console.log('Gemini evaluation successful');
