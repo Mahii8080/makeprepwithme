@@ -189,26 +189,38 @@ const questionSchema = {
 
 const getQuestionGenerationPrompt = (subject: Subject | string, difficulty: Difficulty, previousQuestions: string[] = [], resumeText?: string): string => {
     let persona: string;
-    let resumeContext = resumeText ? `\n\nCandidate Profile:\n${resumeText}\n\nAsk questions based on this profile.` : '';
-    let avoidRepetition = previousQuestions.length > 0 ? `\n\nAvoid these questions:\n${previousQuestions.join('\n')}` : '';
+    const isResumeInterview = subject === 'Resume Interview';
+    
+    let resumeContext = '';
+    if (resumeText) {
+        if (isResumeInterview) {
+            resumeContext = `\n\nCONTEXT: This is a Resume-Based Interview. The candidate's profile is:\n"""\n${resumeText}\n"""\nINSTRUCTION: Ask a technical or project-specific question based ON this resume.`;
+        } else {
+            resumeContext = `\n\nCONTEXT: Candidate's profile for reference:\n"""\n${resumeText}\n"""\nINSTRUCTION: You may relate the question to their background, but focus primarily on the topic '${subject}'.`;
+        }
+    }
+    
+    let avoidRepetition = previousQuestions.length > 0 ? `\n\nAvoid these previous questions:\n${previousQuestions.join('\n')}` : '';
 
     switch (difficulty) {
         case 'Beginner': 
-            persona = "Extremely basic entry-level interviewer. Focus ONLY on core syntax, basic definitions, and fundamental concepts that a Day 1 learner would know. Strictly avoid complex logic or frameworks."; 
+            persona = "Extremely basic entry-level interviewer. Focus ONLY on core syntax, basic definitions, and fundamental concepts. Strictly avoid complex architecture or deep optimization."; 
             break;
         case 'Intermediate': 
             persona = "Professional mid-level interviewer. Focus on practical application, problem-solving, common libraries, and best practices."; 
             break;
         case 'Advanced': 
-            persona = "Senior technical architect or Lead developer. Focus on internal architecture, high-level design patterns, performance optimization, and complex edge cases."; 
+            persona = "Senior technical architect. Focus on internal architecture, high-level design patterns, performance, and complex edge cases."; 
             break;
         default: 
             persona = "Professional interviewer.";
     }
 
-    return `${persona} Topic: '${subject}'. Level to target: '${difficulty}'. ${resumeContext}${avoidRepetition} 
+    let beginnerFallback = !isResumeInterview ? `For BEGINNER level, if no previous questions are listed, you may ask "What is ${subject} and what is it used for?".` : '';
+
+    return `${persona} Topic: '${isResumeInterview ? 'Resume Projects and Skills' : subject}'. Target Level: '${difficulty}'. ${resumeContext}${avoidRepetition} 
     
-    IMPORTANT: Ask EXACTLY ONE interview question. For BEGINNER level, if no previous questions are listed, you may ask "What is ${subject} and what is it used for?". Keep the question under 30 words. Return ONLY a JSON object with a single property "question". No extra text.`;
+    IMPORTANT: Ask EXACTLY ONE interview question. ${beginnerFallback} Keep the question under 35 words. Return ONLY a JSON object with a single property "question". No extra text.`;
 };
 
 // ── Core Functions ───────────────────────────────────────────────────────────
@@ -401,18 +413,34 @@ export const askCustomQuestion = async (question: string, subject: Subject | str
 
 export const analyzeResumeFile = async (base64Data: string, mimeType: string): Promise<string> => {
     try {
-        const response = await getGenAI().models.generateContent({
+        const genaiInstance = getGenAI();
+        const model = genaiInstance.models || genaiInstance;
+        
+        const response = await model.generateContent({
             model: GEMINI_MODEL,
             contents: [{
+                role: 'user',
                 parts: [
-                    { text: "Extract skills, technologies, and projects from this resume. Return a well-formatted summary." },
+                    { text: "Extract skills, technologies, and projects from this resume. Return a well-formatted summary of their technical background." },
                     { inlineData: { mimeType, data: base64Data } }
                 ]
             }]
         });
-        return response.text();
-    } catch (e) {
-        // Fallback to OpenAI Vision (requires different format)
+
+        let extracted = '';
+        if (typeof response.text === 'function') {
+            extracted = await response.text();
+        } else {
+            extracted = String(response.text || '');
+        }
+        
+        if (!extracted) throw new Error("AI returned empty analysis.");
+        return extracted;
+
+    } catch (e: any) {
+        console.warn("Gemini resume analysis failed, trying fallback:", e?.message);
+        
+        // Fallback to OpenAI Vision (only works for images in this implementation)
         const openai = getOpenAI();
         if (openai && mimeType.startsWith('image/')) {
             try {
@@ -421,14 +449,16 @@ export const analyzeResumeFile = async (base64Data: string, mimeType: string): P
                     messages: [{
                         role: "user",
                         content: [
-                            { type: "text", text: "Extract skills and projects from this resume." },
+                            { type: "text", text: "Extract skills, technologies, and projects from this resume image." },
                             { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data}` } }
                         ]
                     }]
                 });
-                return completion.choices[0].message.content || "Error.";
-            } catch (e2) {}
+                return completion.choices[0].message.content || "Error extracting from image.";
+            } catch (e2: any) {
+                console.error("OpenAI resume fallback also failed:", e2.message);
+            }
         }
-        throw new Error("Failed to process resume. Try using a clear image.");
+        throw new Error("Failed to process resume. Please ensure it is a clear PDF or image.");
     }
 };
