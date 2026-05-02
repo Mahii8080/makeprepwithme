@@ -209,7 +209,7 @@ ${resumeContext}${prevContext}`;
     if (genai) {
       try {
         const result = await genai.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash',
           contents: [
             {
               role: 'user',
@@ -281,45 +281,67 @@ app.post('/api/analyze-resume', async (req, res) => {
       return res.status(400).json({ error: 'base64Data and mimeType are required' });
     }
 
-    const prompt = `Extract and summarize the candidate's:
-1. Skills and technical competencies
-2. Programming languages and frameworks
-3. Key projects with technologies used
-4. Relevant work experience
-5. Education background
+    const prompt = `You are an expert resume parser. Extract and summarize ALL of the following from this resume document:
+1. Full name and contact details (if present)
+2. Skills and technical competencies (list all technologies, tools, languages)
+3. Programming languages and frameworks (be specific and exhaustive)
+4. Key projects — for each project: name, description, and technologies used
+5. Work experience — company names, roles, duration, and key responsibilities
+6. Education — degree, institution, graduation year
 
-Provide a concise, well-structured summary suitable for an AI interview coach. Focus on technical capabilities.`;
+Provide a well-structured, comprehensive plain-text summary optimized for an AI interview coach to generate targeted technical interview questions. Be thorough — include EVERY skill, technology, and project mentioned.`;
 
     let extracted = '';
     let analysisError: string | null = null;
 
-    // Ensure base64Data is clean (remove data URI scheme if present)
+    // Ensure base64Data is clean (remove data URI scheme prefix if present)
     const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
+    // ── Attempt 1: Gemini (supports PDF, images, and more natively) ──
+    // Try multiple models in order of preference, falling back when quota is exceeded
     if (genai) {
-      try {
-        const result = await genai.models.generateContent({
-          model: 'gemini-2.0-flash',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: prompt },
-                { inlineData: { mimeType, data: cleanBase64 } }
-              ]
-            }
-          ]
-        });
-        extracted = (result.text || '').trim();
-        console.log('Gemini resume analysis successful');
-      } catch (geminiErr: any) {
-        analysisError = geminiErr?.message || 'Gemini resume analysis failed';
-        console.warn('Gemini resume analysis failed:', geminiErr?.message);
+      const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+      for (const model of GEMINI_MODELS) {
+        if (extracted) break;
+        try {
+          console.log(`Trying Gemini model: ${model}`);
+          const result = await genai.models.generateContent({
+            model,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: prompt },
+                  { inlineData: { mimeType, data: cleanBase64 } }
+                ]
+              }
+            ]
+          });
+          const text = (result.text || '').trim();
+          if (text.length > 50) {
+            extracted = text;
+            console.log(`Gemini resume analysis successful with model: ${model}`);
+          } else {
+            throw new Error(`${model} returned an empty or too-short response`);
+          }
+        } catch (geminiErr: any) {
+          const isQuotaError = geminiErr?.message?.includes('429') || geminiErr?.message?.includes('quota') || geminiErr?.message?.includes('RESOURCE_EXHAUSTED');
+          if (isQuotaError) {
+            console.warn(`${model} quota exceeded, trying next model...`);
+            analysisError = `${model} quota exceeded`;
+            // Continue to next model
+          } else {
+            analysisError = geminiErr?.message || `${model} analysis failed`;
+            console.warn(`${model} resume analysis failed with non-quota error:`, geminiErr?.message);
+            break; // Non-quota error — don't keep trying other models
+          }
+        }
       }
     }
 
-    // Fallback to OpenAI if Gemini failed
-    if (!extracted && openai) {
+    // ── Attempt 2: OpenAI vision (images only — PDFs are NOT supported by OpenAI image_url) ──
+    const isImage = mimeType.startsWith('image/');
+    if (!extracted && openai && isImage) {
       try {
         const response = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
@@ -328,15 +350,27 @@ Provide a concise, well-structured summary suitable for an AI interview coach. F
             content: [
               { type: 'text', text: prompt },
               { type: 'image_url', image_url: { url: `data:${mimeType};base64,${cleanBase64}` } }
-            ]
+            ] as any
           }],
-          max_tokens: 1000
+          max_tokens: 1500
         });
-        extracted = (response.choices[0].message?.content || '').trim();
-        console.log('OpenAI resume analysis successful');
+        const text = (response.choices[0].message?.content || '').trim();
+        if (text.length > 50) {
+          extracted = text;
+          console.log('OpenAI resume analysis successful');
+        } else {
+          throw new Error('OpenAI returned an empty response');
+        }
       } catch (openaiErr: any) {
-        analysisError = `OpenAI Error: ${openaiErr?.message || 'Analysis failed'}`;
+        const prevError = analysisError ? `${analysisError} | ` : '';
+        analysisError = `${prevError}OpenAI Error: ${openaiErr?.message || 'Analysis failed'}`;
         console.warn('OpenAI resume analysis failed:', openaiErr?.message);
+      }
+    } else if (!extracted && !isImage) {
+      const pdfMsg = 'All Gemini models have exceeded their free-tier quota. PDF analysis requires Gemini. Please wait a few minutes and try again, or upgrade your Gemini API key at https://ai.google.dev/';
+      console.log(`PDF resume: ${pdfMsg}`);
+      if (!analysisError || analysisError.includes('quota')) {
+        analysisError = pdfMsg;
       }
     }
 
@@ -353,6 +387,7 @@ Provide a concise, well-structured summary suitable for an AI interview coach. F
     res.status(500).json({ error: errorMessage });
   }
 });
+
 
 // Evaluate answer server-side and PERSIST to DB
 app.post('/api/evaluate-answer', async (req, res) => {
@@ -397,7 +432,7 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
           }
 
           const resultRes = await genai.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash',
             contents: [
               {
                 role: 'user',

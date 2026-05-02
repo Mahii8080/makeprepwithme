@@ -2,9 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { ProfileData, Subject, Difficulty } from '../types';
 import { getProfileData, getAllBadges, clearAllStats } from '../services/profileService';
-import { getCurrentUser, logoutUser } from '../services/authService';
+import { subscribeToAuthChanges, logoutUser } from '../services/authService';
 import { getUserFeedbacks, SessionFeedback } from '../services/feedbackService';
 import { FeedbackCard } from './FeedbackCard';
+import { User } from '../services/authService';
 
 interface ProfileScreenProps {
   onBack: () => void;
@@ -58,61 +59,109 @@ const SessionFeedbackSummary: React.FC<{ session: SessionFeedback }> = ({ sessio
 
 const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack, onLogout }) => {
   const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [currentUser, setCurrentUser] = useState(getCurrentUser());
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userFeedbacks, setUserFeedbacks] = useState<SessionFeedback[]>([]);
   const [showFeedbacks, setShowFeedbacks] = useState(false);
   const [backendStats, setBackendStats] = useState<any>(null);
-  const badges = getAllBadges();
+  const [isLoading, setIsLoading] = useState(true);
+  const [badges, setBadges] = useState<ReturnType<typeof getAllBadges>>([]);
 
+  // Subscribe to Firebase auth state changes
   useEffect(() => {
-    setProfile(getProfileData());
-    const user = getCurrentUser();
-    setCurrentUser(user);
-    if (user) {
-      // Local feedbacks as initial state
-      const local = getUserFeedbacks(user.id);
-      setUserFeedbacks(local);
-      
-      // Fetch stats and history from backend
-      fetch(`http://localhost:4000/api/stats/${user.id}`)
-        .then(res => res.json())
-        .then(data => {
-          setBackendStats(data);
-          // If backend has sessions, we can merge or prefer them
-          if (data.sessions && data.sessions.length > 0) {
-            // Map backend sessions to SessionFeedback structure
-            const mapped: SessionFeedback[] = data.sessions.map((s: any) => ({
-               sessionId: s.id,
-               subject: s.subject as Subject,
-               difficulty: (s.difficulty || 'Beginner') as Difficulty,
-               timestamp: s.date,
-               averageScore: s.score || 0,
-               feedbacks: [] // Backend summary doesn't have full details in the stat call yet, 
-                             // but we can show the list and link to details if needed.
-                             // For now, we'll keep local feedbacks for details if available.
-            }));
-            
-            // Simple merge: prefer backend records, but use local for details if IDs match
-            const merged = mapped.map(bs => {
-                const localMatch = local.find(l => l.sessionId === bs.sessionId);
-                return localMatch ? localMatch : bs;
-            });
-            setUserFeedbacks(merged);
-          }
-        })
-        .catch(e => console.warn('Failed to load backend stats:', e));
-    }
+    const unsubscribe = subscribeToAuthChanges((user) => {
+      setCurrentUser(user);
+    });
+    return unsubscribe;
   }, []);
 
-  const handleLogout = () => {
-    logoutUser();
+  // Load profile data once auth is known
+  useEffect(() => {
+    const loadProfile = async () => {
+      setIsLoading(true);
+      try {
+        // getProfileData is now async (Firestore-backed)
+        const profileData = await getProfileData();
+        setProfile(profileData);
+        // getAllBadges uses the synchronous localStorage mirror for badge display
+        setBadges(getAllBadges());
+      } catch (err) {
+        console.error('Failed to load profile:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, []);
+
+  // Load feedbacks once we know the current user
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Local feedbacks as initial state
+    const local = getUserFeedbacks(currentUser.id);
+    setUserFeedbacks(local);
+
+    // Fetch stats and history from backend
+    fetch(`http://localhost:4000/api/stats/${currentUser.id}`)
+      .then(res => res.json())
+      .then(data => {
+        setBackendStats(data);
+        if (data.sessions && data.sessions.length > 0) {
+          const mapped: SessionFeedback[] = data.sessions.map((s: any) => ({
+            sessionId: s.id,
+            subject: s.subject as Subject,
+            difficulty: (s.difficulty || 'Beginner') as Difficulty,
+            timestamp: s.date,
+            averageScore: s.score || 0,
+            feedbacks: [],
+          }));
+
+          const merged = mapped.map(bs => {
+            const localMatch = local.find(l => l.sessionId === bs.sessionId);
+            return localMatch ? localMatch : bs;
+          });
+          setUserFeedbacks(merged);
+        }
+      })
+      .catch(e => console.warn('Failed to load backend stats:', e));
+  }, [currentUser]);
+
+  const handleLogout = async () => {
+    await logoutUser();
     if (onLogout) {
       onLogout();
     }
   };
 
+  const handleClearStats = async () => {
+    if (confirm('Are you sure? This will wipe your local statistics to zero.')) {
+      await clearAllStats();
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+          <p className="text-gray-400">Loading your profile...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!profile) {
-    return <div>Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center">
+          <p className="text-red-400 text-lg mb-4">Failed to load profile data.</p>
+          <button onClick={onBack} className="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-6 rounded-lg">
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Use backend stats if available for better accuracy
@@ -159,11 +208,11 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack, onLogout }) => {
             <StatCard label="Record" value={profile.longestStreak} icon="🏅" />
           </div>
           <div className="mt-4 text-right">
-            <button 
-                onClick={() => { if(confirm("Are you sure? This will wipe your local statistics to zero.")) clearAllStats(); }}
-                className="text-xs text-gray-600 hover:text-red-400 transition-colors uppercase tracking-tighter"
+            <button
+              onClick={handleClearStats}
+              className="text-xs text-gray-600 hover:text-red-400 transition-colors uppercase tracking-tighter"
             >
-                ⚠️ Reset All Progress
+              ⚠️ Reset All Progress
             </button>
           </div>
         </section>
@@ -180,7 +229,6 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack, onLogout }) => {
             ))}
           </div>
         </section>
-
 
         {/* Feedback History Section */}
         {currentUser && (
@@ -200,11 +248,14 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack, onLogout }) => {
             {showFeedbacks && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {userFeedbacks.length > 0 ? (
-                  userFeedbacks.slice().sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((session, idx) => (
-                    <div key={session.sessionId || idx} className="transform transition-all hover:scale-[1.02]">
-                       <SessionFeedbackSummary session={session} />
-                    </div>
-                  ))
+                  userFeedbacks
+                    .slice()
+                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                    .map((session, idx) => (
+                      <div key={session.sessionId || idx} className="transform transition-all hover:scale-[1.02]">
+                        <SessionFeedbackSummary session={session} />
+                      </div>
+                    ))
                 ) : (
                   <div className="col-span-full py-12 text-center bg-gray-800/20 rounded-xl border border-dashed border-gray-700">
                     <p className="text-gray-500 mb-2">No session records found.</p>

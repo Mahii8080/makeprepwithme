@@ -4,7 +4,7 @@ import { Subject, Difficulty, Company, ChatMessage } from '../types';
 import { askCustomQuestion } from '../services/geminiService';
 import { MicrophoneIcon } from './icons/MicrophoneIcon';
 import { StopIcon } from './icons/StopIcon';
-import { getProfileData } from '../services/profileService';
+
 
 declare global {
   interface Window {

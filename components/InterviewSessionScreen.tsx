@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Subject, ChatMessage, Feedback, Difficulty } from '../types';
 import { generateQuestion, evaluateAnswer, askCustomQuestion } from '../services/geminiService';
-import { updateProfileOnSessionEnd, getProfileData } from '../services/profileService';
+import { updateProfileOnSessionEnd, getProfileDataSync } from '../services/profileService';
 import { getCurrentUser } from '../services/authService';
 import { Avatar, AvatarState } from './Avatar';
 import { ThreeAvatar } from './ThreeAvatar';
@@ -108,6 +108,9 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   }, []);
 
   // ── SpeechRecognition — created ONCE, never recreated ─────────────────────
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const SILENCE_DELAY = 2000; // ms of silence before auto-submitting
+
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
@@ -116,21 +119,38 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     }
 
     const recognition = new SR();
-    recognition.continuous = false;
+    recognition.continuous = true;   // keep listening through pauses
     recognition.interimResults = true;
     recognition.lang = 'en-US';
     recognition.maxAlternatives = 1;
 
     let accumulatedTranscript = '';
 
+    const clearSilenceTimer = () => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+    };
+
+    const scheduleSilenceSubmit = () => {
+      clearSilenceTimer();
+      silenceTimerRef.current = setTimeout(() => {
+        // Only auto-submit if we're still listening and not loading/waiting
+        if (isListeningRef.current && !isLoadingRef.current && !showNextRef.current) {
+          try { recognition.stop(); } catch (_) { /* ignore */ }
+        }
+      }, SILENCE_DELAY);
+    };
+
     recognition.onstart = () => {
       isStartingRef.current = false;
       setIsListening(true);
       isListeningRef.current = true;
-      setAvatarState('listening'); // AI mentor also enters listening state
+      setAvatarState('listening');
       accumulatedTranscript = '';
       setMicError('');
-      setUserInput('');
+      // NOTE: Do NOT clear userInput here — preserve any typed text
       setInterimTranscript('');
     };
 
@@ -138,7 +158,6 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       let interimFound = '';
       let newlyFinal = '';
 
-      // Only process results starting from event.resultIndex (new results)
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
@@ -150,40 +169,62 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
 
       if (newlyFinal) {
         accumulatedTranscript += newlyFinal;
+        // Reset silence timer each time we get new final speech
+        scheduleSilenceSubmit();
       }
 
-      const display = (accumulatedTranscript + interimFound).trim();
-      setUserInput(display);
+      // Merge existing userInput (typed) with speech
+      const speechSoFar = (accumulatedTranscript + interimFound).trim();
+      setUserInput(prev => {
+        // If there's typed content already, append speech after it
+        const typed = prev && !isListeningRef.current ? prev : '';
+        return typed ? typed + ' ' + speechSoFar : speechSoFar;
+      });
       setInterimTranscript(interimFound);
     };
 
     recognition.onend = () => {
+      clearSilenceTimer();
       isStartingRef.current = false;
       setIsListening(false);
       isListeningRef.current = false;
       setInterimTranscript('');
 
       const finalText = accumulatedTranscript.trim();
+
       if (finalText && !isLoadingRef.current && !showNextRef.current) {
+        // Set userInput so the text is visible, then submit
+        setUserInput(finalText);
         handleSubmitRef.current(finalText);
+      } else if (!finalText) {
+        // Nothing was said — show a friendly hint
+        setMicError('No speech detected. Try speaking louder or check your microphone.');
+        setTimeout(() => setMicError(''), 3000);
       }
       accumulatedTranscript = '';
     };
 
     recognition.onerror = (event: any) => {
+      clearSilenceTimer();
       isStartingRef.current = false;
+
+      const silentErrors = ['aborted', 'no-speech'];
+      if (event.error === 'aborted') {
+        // Triggered by recognition.stop() — normal, do nothing
+        return;
+      }
+
       setIsListening(false);
       isListeningRef.current = false;
 
-      const silentErrors = ['aborted', 'no-speech'];
       if (!silentErrors.includes(event.error)) {
         console.error('Speech recognition error:', event.error);
         if (event.error === 'not-allowed') {
           setMicError('Microphone access denied. Please allow mic access in your browser settings and reload.');
         } else if (event.error === 'network') {
-          setMicError('Network error. Check your connection.');
+          setMicError('Network error with speech service. Try again.');
         } else {
-          setMicError(`Mic issues: ${event.error}.`);
+          setMicError(`Mic error: ${event.error}. Tap the mic to try again.`);
         }
       }
       setInterimTranscript('');
@@ -192,6 +233,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
 
     recognitionRef.current = recognition;
     return () => {
+      clearSilenceTimer();
       isStartingRef.current = false;
       try { recognition.abort(); } catch (_) { /* ignore */ }
     };
@@ -205,7 +247,6 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     }
     if (isListeningRef.current || isStartingRef.current) return;
     setMicError('');
-    setUserInput('');
     setInterimTranscript('');
     isStartingRef.current = true;
     try {
@@ -218,15 +259,19 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   };
 
   const stopListening = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
     if (recognitionRef.current && isListeningRef.current) {
       try { recognitionRef.current.stop(); } catch (_) { /* ignore */ }
     }
   };
 
   const toggleListen = () => {
-    if (isLoading) return; // blocked while AI is thinking/evaluating
+    if (isLoading) return;
     if (isListeningRef.current) {
-      stopListening();
+      stopListening(); // manual stop → onend fires → auto-submits if text exists
     } else {
       startListening();
     }
@@ -313,7 +358,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     if (isPrefetching) return;
     try {
       setIsPrefetching(true);
-      const resumeText = getProfileData().resumeText;
+      const resumeText = getProfileDataSync().resumeText;
       const nextQ = await generateQuestion(subject, difficulty, currentPreviousQuestions, resumeText);
       setPrefetchedQuestion(nextQ);
     } catch (err) {
@@ -335,7 +380,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       setPrefetchedQuestion(null);
     } else {
       setIsLoading(true);
-      const resumeText = getProfileData().resumeText;
+      const resumeText = getProfileDataSync().resumeText;
       question = await generateQuestion(subject, difficulty, previousQuestionsRef.current, resumeText);
     }
 
@@ -460,7 +505,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
       ? sessionScores.current.reduce((a, b) => a + b, 0) / sessionScores.current.length 
       : 0;
 
-    updateProfileOnSessionEnd(subject, avgScore, sessionScores.current.length);
+    updateProfileOnSessionEnd(subject, avgScore, sessionScores.current.length).catch(e => console.warn('Profile update failed:', e));
     
     // Notify backend
     if (sessionIdRef.current) {
@@ -647,9 +692,9 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
             <MicButton large />
             <p className="text-gray-500 text-sm h-5">
               {isListening
-                ? '🔴 Recording — pause briefly when done to auto-submit'
+                ? '🔴 Recording — tap mic again when done, or pause 2s to auto-submit'
                 : isLoading ? ''
-                  : 'Tap mic, speak your answer, then pause — it will auto-submit'}
+                  : 'Tap mic to start speaking your answer'}
             </p>
           </div>
         </div>
@@ -777,10 +822,10 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
                   onChange={(e) => setUserInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && userInput.trim() && !isLoading) handleSubmit(userInput); }}
                   placeholder={
-                    isListening ? 'Speaking... (press Enter to submit early)' :
+                    isListening ? 'Speaking... (tap mic again to submit)' :
                       isLoading ? 'Please wait...' :
                         showNextQuestionButton ? 'Review feedback and click Next Question' :
-                          'Type your answer or click the mic to speak...'
+                          'Type your answer or tap the mic to speak...'
                   }
                   className="flex-1 bg-gray-700 text-white rounded-full py-3 px-5 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed"
                   disabled={isLoading && !isListening}

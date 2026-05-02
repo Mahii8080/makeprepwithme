@@ -89,7 +89,8 @@ const getOpenAI = () => {
     return openaiClient;
 };
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash';        // Primary: confirmed working as of 2026-05-02
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-lite'; // Fallback if primary hits quota
 const OPENAI_MODEL = 'gpt-4o-mini';
 
 // ── Rich Emergency Question Bank (Question + Model Answer + Key Concepts) ────
@@ -304,25 +305,28 @@ export const generateQuestion = async (subject: Subject | string, difficulty: Di
         console.warn('Backend generate-question failed, falling back to direct AI:', err);
     }
 
-    // ── SECONDARY: Direct Gemini call ──
+    // ── SECONDARY: Direct Gemini call (try primary, then fallback model) ──
     const prompt = getQuestionGenerationPrompt(subject, difficulty, previousQuestions, resumeText);
-    try {
-        const genaiInstance = getGenAI();
-        if (!genaiInstance) throw new Error("No Gemini instance");
+    for (const gModel of [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]) {
+        try {
+            const genaiInstance = getGenAI();
+            if (!genaiInstance) throw new Error("No Gemini instance");
 
-        const result = await genaiInstance.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json"
-            }
-        });
+            const result = await genaiInstance.models.generateContent({
+                model: gModel,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json"
+                }
+            });
 
-        const jsonText = result.text || '';
-        const parsed = parseAiJson(jsonText);
-        if (parsed.question) return parsed.question;
-    } catch (geminiError: any) {
-        console.warn("Gemini direct failed, falling back to OpenAI:", geminiError?.message || geminiError);
+            const jsonText = result.text || '';
+            const parsed = parseAiJson(jsonText);
+            if (parsed.question) return parsed.question;
+        } catch (geminiError: any) {
+            const isQuota = geminiError?.message?.includes('429') || geminiError?.message?.includes('quota');
+            console.warn(`Gemini ${gModel} failed${isQuota ? ' (quota)' : ''}, trying next...`, geminiError?.message?.substring(0, 80));
+        }
     }
 
     // 2. Fallback to OpenAI
@@ -409,32 +413,37 @@ ${withVisual ? '- "nonVerbalFeedback": string — 1-2 sentences about body langu
 
 IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
 
-    try {
-        const genaiInstance = getGenAI();
-        if (!genaiInstance) throw new Error("No Gemini instance");
+    // Try both Gemini models (primary then lite fallback)
+    const geminiModels = [GEMINI_MODEL, GEMINI_FALLBACK_MODEL];
+    for (const gModel of geminiModels) {
+        try {
+            const genaiInstance = getGenAI();
+            if (!genaiInstance) throw new Error("No Gemini instance");
 
-        const parts: any[] = [{ text: prompt }];
-        if (withVisual && imageB64Data) {
-            parts.push({
-                inlineData: { mimeType: 'image/jpeg', data: imageB64Data.split(',')[1] }
-            });
-        }
-
-        const result = await genaiInstance.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: [{ role: 'user', parts }],
-            config: {
-                responseMimeType: "application/json"
+            const parts: any[] = [{ text: prompt }];
+            if (withVisual && imageB64Data) {
+                parts.push({
+                    inlineData: { mimeType: 'image/jpeg', data: imageB64Data.split(',')[1] }
+                });
             }
-        });
-        const jsonText = result.text || '';
-        const parsed = parseAiJson(jsonText);
-        if (parsed && typeof parsed.score === 'number' && parsed.feedback) {
-            return parsed as Feedback;
+
+            const result = await genaiInstance.models.generateContent({
+                model: gModel,
+                contents: [{ role: 'user', parts }],
+                config: {
+                    responseMimeType: "application/json"
+                }
+            });
+            const jsonText = result.text || '';
+            const parsed = parseAiJson(jsonText);
+            if (parsed && typeof parsed.score === 'number' && parsed.feedback) {
+                return parsed as Feedback;
+            }
+            throw new Error(`${gModel} returned an incomplete JSON response`);
+        } catch (e: any) {
+            const isQuota = e?.message?.includes('429') || e?.message?.includes('quota');
+            console.warn(`Direct Gemini evaluation (${gModel}) failed${isQuota ? ' [quota]' : ''}:`, e?.message?.substring(0, 80));
         }
-        throw new Error("Direct Gemini returned an incomplete JSON response");
-    } catch (e: any) {
-        console.warn("Direct Gemini evaluation failed:", e?.message || e);
     }
 
     // ── FINAL FALLBACK: OpenAI ──
@@ -573,27 +582,119 @@ export const askCustomQuestion = async (question: string, subject: Subject | str
 };
 
 export const analyzeResumeFile = async (base64Data: string, mimeType: string): Promise<string> => {
+    const resumePrompt = `You are an expert resume parser. Extract and summarize ALL of the following from this resume document:
+1. Full name and contact details (if present)
+2. Skills and technical competencies (list all technologies, tools, languages)
+3. Programming languages and frameworks (be specific and exhaustive)
+4. Key projects — for each project: name, description, and technologies used
+5. Work experience — company names, roles, duration, and key responsibilities
+6. Education — degree, institution, graduation year
+
+Provide a well-structured, comprehensive plain-text summary optimized for an AI interview coach to generate targeted technical interview questions. Be thorough — include EVERY skill, technology, and project mentioned.`;
+
+    // Clean base64 — strip data URI prefix if present
+    const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+
+    // ── STEP 1: Try backend server (preferred — handles server-side quota) ──
     try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
         const response = await fetch(`${BACKEND_URL}/api/analyze-resume`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ base64Data, mimeType }),
+            body: JSON.stringify({ base64Data: cleanBase64, mimeType }),
+            signal: controller.signal,
         });
+        clearTimeout(timeout);
 
-        if (!response.ok) {
+        if (response.ok) {
+            const data = await response.json();
+            if (data && typeof data.extractedText === 'string' && data.extractedText.trim().length > 0) {
+                console.log('Resume analyzed via backend successfully.');
+                return data.extractedText.trim();
+            }
+        } else {
             const payload = await response.json().catch(() => null);
-            const message = payload?.error || `Resume analysis failed with status ${response.status}`;
-            throw new Error(message);
+            console.warn('Backend analyze-resume non-OK:', payload?.error || response.status);
         }
-
-        const data = await response.json();
-        if (data && typeof data.extractedText === 'string' && data.extractedText.trim().length > 0) {
-            return data.extractedText.trim();
+    } catch (backendErr: any) {
+        if (backendErr?.name === 'AbortError') {
+            console.warn('Backend analyze-resume timed out, falling back to direct Gemini.');
+        } else {
+            console.warn('Backend analyze-resume unreachable, falling back to direct Gemini:', backendErr?.message);
         }
-
-        throw new Error('Resume analysis returned no text.');
-    } catch (e: any) {
-        console.error('Resume analyzer backend failed:', e);
-        throw new Error(e?.message || 'Failed to analyze resume. Please ensure the backend is running and AI keys are configured.');
     }
+
+    // ── STEP 2: Direct Gemini call (supports PDF, images natively) — try both models ──
+    for (const gModel of [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]) {
+        try {
+            const genaiInstance = getGenAI();
+            if (!genaiInstance) throw new Error('No Gemini API key configured');
+
+            console.log(`Resume: Attempting direct Gemini analysis with ${gModel}...`);
+            const result = await genaiInstance.models.generateContent({
+                model: gModel,
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [
+                            { text: resumePrompt },
+                            { inlineData: { mimeType, data: cleanBase64 } }
+                        ]
+                    }
+                ]
+            });
+
+            const text = (result.text || '').trim();
+            if (text.length > 50) {
+                console.log(`Resume analyzed via direct Gemini (${gModel}) successfully.`);
+                return text;
+            }
+            throw new Error(`${gModel} returned an empty or too-short response.`);
+        } catch (geminiErr: any) {
+            const isQuota = geminiErr?.message?.includes('429') || geminiErr?.message?.includes('quota');
+            console.warn(`Direct Gemini resume analysis (${gModel}) failed${isQuota ? ' [quota]' : ''}:`, geminiErr?.message?.substring(0, 80));
+        }
+    }
+
+    // ── STEP 3: Direct OpenAI fallback (images only — PDF not supported) ──
+    const isImage = mimeType.startsWith('image/');
+    if (isImage) {
+        const openaiClient = getOpenAI();
+        if (openaiClient) {
+            try {
+                console.log('Resume: Attempting direct OpenAI analysis (image)...');
+                const completion = await openaiClient.chat.completions.create({
+                    model: OPENAI_MODEL,
+                    messages: [
+                        {
+                            role: 'user',
+                            content: [
+                                { type: 'text', text: resumePrompt },
+                                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${cleanBase64}` } }
+                            ]
+                        }
+                    ],
+                    max_tokens: 1500,
+                });
+                const text = (completion.choices[0].message?.content || '').trim();
+                if (text.length > 50) {
+                    console.log('Resume analyzed via direct OpenAI successfully.');
+                    return text;
+                }
+                throw new Error('OpenAI returned an empty response.');
+            } catch (openaiErr: any) {
+                console.warn('Direct OpenAI resume analysis failed:', openaiErr?.message || openaiErr);
+            }
+        }
+    }
+
+    // ── STEP 4: Hard failure — give a helpful error ──
+    const fileTypeHint = mimeType === 'application/pdf'
+        ? 'PDF files require the backend server to be running, OR a direct Gemini API key with sufficient quota.'
+        : 'Please ensure the backend server is running at http://localhost:4000 or that a valid Gemini/OpenAI API key is configured.';
+
+    throw new Error(
+        `Resume analysis failed. All AI services are unavailable.\n${fileTypeHint}\n\nTip: Run "npm run dev:full" to start both the frontend and backend simultaneously.`
+    );
 };
