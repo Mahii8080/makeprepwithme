@@ -15,7 +15,7 @@ const port = process.env.PORT || 4000;
 
 let genai: any = null;
 if (process.env.GEMINI_API_KEY) {
-  genai = new GoogleGenAI(process.env.GEMINI_API_KEY);
+  genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 }
 
 let openai: OpenAI | null = null;
@@ -70,14 +70,59 @@ app.post('/api/generate-question', async (req, res) => {
   if (!subject || !difficulty) return res.status(400).json({ error: 'subject & difficulty required' });
 
   const getFallbackQuestion = () => {
-    const fallbacks = [
-      `What is the difference between a list and a tuple in ${subject}?`,
-      `Can you explain what a dictionary/hashmap is in ${subject}?`,
-      `How do you define a function or method in ${subject}?`,
-      `What are the most common data types available in ${subject}?`,
-      `Explain the concept of 'loops' in ${subject} with a simple example.`,
-      `What is ${subject} and what are its primary use cases?`
-    ];
+    const EMERGENCY_QUESTIONS: any = {
+      'JavaScript': [
+        "What is the difference between 'let', 'const', and 'var'?",
+        "How do you create an array in JavaScript?",
+        "What are the basic data types in JavaScript?",
+        "How do you write a simple 'for' loop?",
+        "How do you add an element to the end of an array?",
+        "What is the difference between null and undefined?",
+        "How do you write a comment in JavaScript?",
+        "What does the 'typeof' operator do?",
+        "How do you define a function in JavaScript?",
+        "What is string concatenation?"
+      ],
+      'React': [
+        "What is a React component?",
+        "How do you pass data from a parent to a child component?",
+        "What is JSX?",
+        "What is the purpose of the 'useState' hook?",
+        "What is the difference between a state and a prop?",
+        "How do you render an array of items in React?",
+        "What is the default port for a local React app?",
+        "How do you handle a click event in a React button?",
+        "Can a component have multiple parent components?",
+        "What does 'npm run start' do in a React app?"
+      ],
+      'Python': [
+        "What are the basic data types in Python?",
+        "How do you define a function in Python?",
+        "What is a list and how do you add items to it?",
+        "What is the difference between a list and a tuple?",
+        "How do you create a dictionary?",
+        "How do you comment multiple lines of code?",
+        "What does the 'len()' function do?",
+        "How do you take user input from the console?",
+        "What is the purpose of the 'if' statement?",
+        "How do you loop through a list?"
+      ],
+      'General': [
+        `What is the difference between a list and an array in ${subject}?`,
+        `Can you explain what a dictionary/hashmap is in ${subject}?`,
+        `How do you define a function or method in ${subject}?`,
+        `What are the most common data types available in ${subject}?`,
+        `Explain the concept of 'loops' in ${subject} with a simple example.`,
+        `What is ${subject} and what are its primary use cases?`,
+        `How do you handle errors and exceptions in ${subject}?`,
+        `Explain memory management briefly in the context of ${subject}.`,
+        `What is a package manager, and how is it used in ${subject}?`,
+        `Describe the 'if-else' logic structure in ${subject}.`
+      ]
+    };
+    
+    const category = Object.keys(EMERGENCY_QUESTIONS).find(k => subject.toString().includes(k)) || 'General';
+    const fallbacks = EMERGENCY_QUESTIONS[category];
     return fallbacks[Math.floor(Math.random() * fallbacks.length)];
   };
 
@@ -101,7 +146,7 @@ app.post('/api/generate-question', async (req, res) => {
     // ── Difficulty-based depth instructions ──
     const depthInstruction =
       difficulty === 'Beginner'
-        ? `Ask an EXTREMELY BASIC, RELATABLE question about '${subject}'. Focus on core definitions and simple concepts. Perfect examples: "What is ${subject}?", "What is a variable?", "Why is '${subject}' popular?". Keep it conversational and very easy.`
+        ? `Ask an EXTREMELY BASIC, BEGINNER-FRIENDLY question about '${subject}'. Focus strictly on core definitions, basic use cases, and introductory concepts. Perfect examples: "What is ${subject}?", "What is the main use of ${subject}?", "What are the basic data types in ${subject}?". Keep it highly conversational, basic, and do NOT ask for code or complex theories.`
         : difficulty === 'Intermediate'
           ? `Ask a practical, RELATABLE question about '${subject}'. Focus on how things are used in real projects. Example: "How do you handle errors in ${subject}?", "What is the difference between a list and an array?".`
           : `Ask an advanced but DIRECT technical question about '${subject}'. Focus on architecture and performance. Example: "How does ${subject} manage memory?", "Explain the trade-offs of using ${subject} for high-traffic apps?".`;
@@ -162,44 +207,62 @@ ${resumeContext}${prevContext}`;
     let question = '';
 
     if (genai) {
-      const model = genai.getGenerativeModel({ 
-        model: 'gemini-2.0-flash',
-        generationConfig: {
-          temperature: 0.9,
-          maxOutputTokens: 500
-        }
-      });
-
-      const result = await model.generateContent(prompt);
-      const raw = result.response.text().trim();
-      console.log('---GEMINI RETURNED---:', raw);
-      
-      let clean = raw;
-      if (clean.startsWith('```')) {
-        clean = clean.replace(/^```(json)?/, '').replace(/```$/, '').trim();
-      }
-      // If it still spit out JSON despite instructions, attempt to parse it
       try {
-        const parsed = JSON.parse(clean);
-        if (parsed && typeof parsed.question === 'string') {
-          question = parsed.question.trim();
-        } else {
+        const result = await genai.models.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt }
+              ]
+            }
+          ],
+          config: {
+            temperature: 0.9,
+            maxOutputTokens: 500
+          }
+        });
+        const raw = (result.text || '').trim();
+        console.log('---GEMINI RETURNED---:', raw);
+        
+        let clean = raw;
+        if (clean.startsWith('```')) {
+          clean = clean.replace(/^```(json)?/, '').replace(/```$/, '').trim();
+        }
+        // If it still spit out JSON despite instructions, attempt to parse it
+        try {
+          const parsed = JSON.parse(clean);
+          if (parsed && typeof parsed.question === 'string') {
+            question = parsed.question.trim();
+          } else {
+            question = clean;
+          }
+        } catch (e: any) {
           question = clean;
         }
-      } catch (e: any) {
-        question = clean;
+      } catch (geminiErr: any) {
+        console.warn('Gemini generate-question failed, falling back to OpenAI:', geminiErr.message);
       }
-    } else if (openai) {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.8,
-        max_tokens: 120,
-      });
-      question = (response.choices[0].message?.content || '').trim();
     }
-
-
+    
+    if (!question && openai) {
+      try {
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.8,
+          max_tokens: 120,
+        });
+        question = (response.choices[0].message?.content || '').trim();
+      } catch (openaiErr: any) {
+        console.warn('OpenAI generate-question failed:', openaiErr.message);
+      }
+    }
+    if (!question) {
+      question = getFallbackQuestion();
+      console.warn('Both AI generations failed or returned empty. Using fallback question.');
+    }
 
     // Do not cut at the first question mark, as scenario questions often contain multiple sentences.
 
@@ -208,6 +271,86 @@ ${resumeContext}${prevContext}`;
     console.error('generate error message:', err.message);
     // If it fails (e.g., rate limit, 404, invalid key), fallback to returning a generic question so the interview doesn't stall.
     return res.json({ question: getFallbackQuestion() });
+  }
+});
+
+app.post('/api/analyze-resume', async (req, res) => {
+  try {
+    const { base64Data, mimeType } = req.body;
+    if (!base64Data || !mimeType) {
+      return res.status(400).json({ error: 'base64Data and mimeType are required' });
+    }
+
+    const prompt = `Extract and summarize the candidate's:
+1. Skills and technical competencies
+2. Programming languages and frameworks
+3. Key projects with technologies used
+4. Relevant work experience
+5. Education background
+
+Provide a concise, well-structured summary suitable for an AI interview coach. Focus on technical capabilities.`;
+
+    let extracted = '';
+    let analysisError: string | null = null;
+
+    // Ensure base64Data is clean (remove data URI scheme if present)
+    const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+
+    if (genai) {
+      try {
+        const result = await genai.models.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: prompt },
+                { inlineData: { mimeType, data: cleanBase64 } }
+              ]
+            }
+          ]
+        });
+        extracted = (result.text || '').trim();
+        console.log('Gemini resume analysis successful');
+      } catch (geminiErr: any) {
+        analysisError = geminiErr?.message || 'Gemini resume analysis failed';
+        console.warn('Gemini resume analysis failed:', geminiErr?.message);
+      }
+    }
+
+    // Fallback to OpenAI if Gemini failed
+    if (!extracted && openai) {
+      try {
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${cleanBase64}` } }
+            ]
+          }],
+          max_tokens: 1000
+        });
+        extracted = (response.choices[0].message?.content || '').trim();
+        console.log('OpenAI resume analysis successful');
+      } catch (openaiErr: any) {
+        analysisError = `OpenAI Error: ${openaiErr?.message || 'Analysis failed'}`;
+        console.warn('OpenAI resume analysis failed:', openaiErr?.message);
+      }
+    }
+
+    if (!extracted) {
+      const errorMessage = analysisError || 'Unable to analyze resume. Please ensure the backend has an AI key configured and quota available.';
+      console.error('Resume analysis failed:', errorMessage);
+      return res.status(500).json({ error: errorMessage });
+    }
+
+    res.json({ extractedText: extracted });
+  } catch (err: any) {
+    console.error('analyze-resume error:', err);
+    const errorMessage = err?.message || 'Failed to analyze resume';
+    res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -243,12 +386,7 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
       // 1. Try Gemini first
       if (genai) {
         try {
-          const model = genai.getGenerativeModel({ 
-            model: 'gemini-2.0-flash',
-            generationConfig: { responseMimeType: 'application/json' }
-          });
-
-          const parts: any = [{ text: prompt }];
+          const parts: any[] = [{ text: prompt }];
           if (withVisual) {
             parts.push({
               inlineData: {
@@ -257,14 +395,20 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
               }
             });
           }
-          
-          const resultRes = await model.generateContent({
-            contents: [{ role: 'user', parts }]
+
+          const resultRes = await genai.models.generateContent({
+            model: 'gemini-2.0-flash',
+            contents: [
+              {
+                role: 'user',
+                parts
+              }
+            ],
+            config: { responseMimeType: 'application/json' }
           });
-          
-          const raw = resultRes.response.text();
-          
-          result = JSON.parse(raw.trim().replace(/^```(json)?/, '').replace(/```$/, '').trim());
+
+          const raw = (resultRes.text || '').trim();
+          result = JSON.parse(raw.replace(/^```(json)?/, '').replace(/```$/, '').trim());
           console.log('Gemini evaluation successful');
         } catch (geminiErr: any) {
           console.warn('Gemini evaluation failed, trying OpenAI:', geminiErr.message);
@@ -294,7 +438,7 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no extra text.`;
       }
 
       // 3. Final Fallback: Static Rule-Based Evaluation (if all AIs fail)
-      if (!result) {
+      if (!result || typeof result.score !== 'number' || !result.feedback) {
         console.log('Using static evaluation fallback');
         const answerWords = (answer || '').trim().split(/\s+/).length;
         const score = answerWords > 15 ? 8 : answerWords > 5 ? 6 : 3;

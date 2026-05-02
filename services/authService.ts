@@ -1,4 +1,17 @@
-// Authentication service for user login and registration
+// Authentication service — powered by Firebase Authentication
+
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  updateProfile,
+  type User as FirebaseUser,
+} from 'firebase/auth';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from './firebase';
+
+// ── Public User Shape ─────────────────────────────────────────────────────────
 
 export interface User {
   id: string;
@@ -7,189 +20,161 @@ export interface User {
   createdAt: string;
 }
 
-interface StoredUser extends User {
-  passwordHash: string;
-}
-
 export interface UserSession {
   user: User;
   loginTime: string;
 }
 
-const USERS_KEY = 'makePrepWithMe_users';
-const CURRENT_SESSION_KEY = 'makePrepWithMe_session';
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
+/** Convert a FirebaseUser to our app's User shape */
+const toAppUser = (fbUser: FirebaseUser): User => ({
+  id: fbUser.uid,
+  username: fbUser.displayName || fbUser.email?.split('@')[0] || 'Learner',
+  email: fbUser.email || '',
+  createdAt: fbUser.metadata.creationTime || new Date().toISOString(),
+});
 
-const hashPassword = (password: string): string => {
-  let hash = 5381;
-  for (let i = 0; i < password.length; i++) {
-    hash = (hash * 33) ^ password.charCodeAt(i);
-  }
-  return (hash >>> 0).toString(16); // unsigned 32-bit hex string
-};
-
-/**
- * Get all registered users (stored users include password hash)
- */
-const getAllStoredUsers = (): StoredUser[] => {
-  try {
-    const data = localStorage.getItem(USERS_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch (error) {
-    console.error('Failed to get users:', error);
-    return [];
-  }
-};
+// ── Auth Functions ────────────────────────────────────────────────────────────
 
 /**
- * Get all registered users (public view — no password hash)
+ * Register a new user with Firebase Auth + save their profile in Firestore
  */
-export const getAllUsers = (): User[] => {
-  return getAllStoredUsers().map(({ passwordHash: _ph, ...user }) => user);
-};
-
-/**
- * Save all users
- */
-const saveStoredUsers = (users: StoredUser[]) => {
-  try {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  } catch (error) {
-    console.error('Failed to save users:', error);
-  }
-};
-
-/**
- * Register a new user
- */
-export const registerUser = (
+export const registerUser = async (
   username: string,
   email: string,
   password: string
-): { success: boolean; message: string; user?: User } => {
-  // Validation
+): Promise<{ success: boolean; message: string; user?: User }> => {
   if (!username || username.trim().length < 3) {
     return { success: false, message: 'Username must be at least 3 characters long.' };
   }
-
   if (!email || !email.includes('@')) {
     return { success: false, message: 'Please enter a valid email address.' };
   }
-
   if (!password || password.length < 6) {
     return { success: false, message: 'Password must be at least 6 characters long.' };
   }
 
-  const users = getAllStoredUsers();
+  try {
+    const credential = await createUserWithEmailAndPassword(auth, email, password);
+    const fbUser = credential.user;
 
-  // Check if user already exists
-  if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-    return { success: false, message: 'Email already registered. Please login instead.' };
+    // Set display name
+    await updateProfile(fbUser, { displayName: username.trim() });
+
+    // Save profile document in Firestore
+    await setDoc(doc(db, 'users', fbUser.uid), {
+      username: username.trim(),
+      email: email.trim().toLowerCase(),
+      createdAt: serverTimestamp(),
+      interviewsCompleted: 0,
+      averageScore: 0,
+      currentStreak: 0,
+      longestStreak: 0,
+      lastSessionDate: null,
+      badges: [],
+      subjectStats: {},
+      totalQuestionsAnswered: 0,
+    });
+
+    const user = toAppUser(fbUser);
+    return { success: true, message: 'Registration successful!', user };
+  } catch (err: any) {
+    const msg = err.code === 'auth/email-already-in-use'
+      ? 'Email already registered. Please login instead.'
+      : err.code === 'auth/weak-password'
+      ? 'Password is too weak. Use at least 6 characters.'
+      : err.message || 'Registration failed. Please try again.';
+    return { success: false, message: msg };
   }
-
-  if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
-    return { success: false, message: 'Username already taken. Please choose a different one.' };
-  }
-
-  // Create new user
-  const newStoredUser: StoredUser = {
-    id: `user_${Date.now()}`,
-    username: username.trim(),
-    email: email.trim().toLowerCase(),
-    createdAt: new Date().toISOString(),
-    passwordHash: hashPassword(password),
-  };
-
-  users.push(newStoredUser);
-  saveStoredUsers(users);
-
-  // Return public user (no password hash)
-  const { passwordHash: _ph, ...publicUser } = newStoredUser;
-  // Auto-login after registration
-  setCurrentSession(publicUser);
-
-  return { success: true, message: 'Registration successful!', user: publicUser };
 };
 
 /**
- * Login user
+ * Login with email and password
  */
-export const loginUser = (
+export const loginUser = async (
   email: string,
   password: string
-): { success: boolean; message: string; user?: User } => {
+): Promise<{ success: boolean; message: string; user?: User }> => {
   if (!email || !email.includes('@')) {
     return { success: false, message: 'Please enter a valid email address.' };
   }
-
   if (!password) {
     return { success: false, message: 'Please enter your password.' };
   }
 
-  const users = getAllStoredUsers();
-  const storedUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-  if (!storedUser) {
-    return { success: false, message: 'No account found with this email. Please register first.' };
-  }
-
-  // Verify password
-  if (storedUser.passwordHash !== hashPassword(password)) {
-    return { success: false, message: 'Incorrect password. Please try again.' };
-  }
-
-  // Return public user (no password hash)
-  const { passwordHash: _ph, ...publicUser } = storedUser;
-  setCurrentSession(publicUser);
-
-  return { success: true, message: 'Login successful!', user: publicUser };
-};
-
-/**
- * Set current user session
- */
-export const setCurrentSession = (user: User) => {
   try {
-    const session: UserSession = {
-      user,
-      loginTime: new Date().toISOString(),
-    };
-    localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(session));
-  } catch (error) {
-    console.error('Failed to set session:', error);
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    const user = toAppUser(credential.user);
+    return { success: true, message: 'Login successful!', user };
+  } catch (err: any) {
+    const msg = err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential'
+      ? 'No account found with this email, or wrong password.'
+      : err.code === 'auth/wrong-password'
+      ? 'Incorrect password. Please try again.'
+      : err.message || 'Login failed. Please try again.';
+    return { success: false, message: msg };
   }
 };
 
 /**
- * Get current logged-in user
+ * Logout the current user
+ */
+export const logoutUser = async (): Promise<void> => {
+  try {
+    await signOut(auth);
+  } catch (err) {
+    console.error('Logout failed:', err);
+  }
+};
+
+/**
+ * Get the currently logged-in user (synchronous snapshot)
+ * Returns null if no user is signed in
  */
 export const getCurrentUser = (): User | null => {
-  try {
-    const data = localStorage.getItem(CURRENT_SESSION_KEY);
-    if (data) {
-      const session: UserSession = JSON.parse(data);
-      return session.user;
-    }
-  } catch (error) {
-    console.error('Failed to get current user:', error);
-  }
-  return null;
+  const fbUser = auth.currentUser;
+  return fbUser ? toAppUser(fbUser) : null;
 };
 
 /**
- * Logout current user
+ * Subscribe to auth state changes (use this in React components)
+ * Returns an unsubscribe function — call it in useEffect cleanup.
+ *
+ * @example
+ * useEffect(() => {
+ *   const unsub = subscribeToAuthChanges(user => setUser(user));
+ *   return unsub;
+ * }, []);
  */
-export const logoutUser = () => {
-  try {
-    localStorage.removeItem(CURRENT_SESSION_KEY);
-  } catch (error) {
-    console.error('Failed to logout:', error);
-  }
+export const subscribeToAuthChanges = (
+  callback: (user: User | null) => void
+): (() => void) => {
+  return onAuthStateChanged(auth, (fbUser) => {
+    callback(fbUser ? toAppUser(fbUser) : null);
+  });
 };
 
 /**
- * Check if user is logged in
+ * Check if any user is currently signed in (synchronous)
  */
 export const isLoggedIn = (): boolean => {
-  return getCurrentUser() !== null;
+  return auth.currentUser !== null;
 };
+
+/**
+ * Fetch full user document from Firestore by uid
+ */
+export const getUserDoc = async (uid: string) => {
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error('Failed to fetch user doc:', err);
+    return null;
+  }
+};
+
+// Legacy stubs — kept so existing code that calls these doesn't crash
+export const setCurrentSession = (_user: User) => { /* handled by Firebase */ };
+export const getAllUsers = (): User[] => [];

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { registerUser, loginUser, isLoggedIn } from '../services/authService';
+import { registerUser, loginUser, subscribeToAuthChanges } from '../services/authService';
 import { resetProfileData } from '../services/profileService';
 
 interface LoginScreenProps {
@@ -42,11 +42,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onGetStarted }) => {
     setMode(newMode);
   };
 
-  // Check if user is already logged in
+  // Redirect if already logged in (Firebase resolves session asynchronously)
   useEffect(() => {
-    if (isLoggedIn()) {
-      onGetStarted();
-    }
+    const unsub = subscribeToAuthChanges(user => {
+      if (user) onGetStarted();
+    });
+    return unsub; // cleanup on unmount
   }, [onGetStarted]);
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -59,9 +60,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onGetStarted }) => {
     }
 
     setLoading(true);
-    const result = registerUser(username, email, password);
+    const result = await registerUser(username, email, password);
     if (result.success) {
-      resetProfileData(username);
+      await resetProfileData(username);
       setMessage('✅ Account created! Redirecting...');
       setTimeout(() => {
         onGetStarted();
@@ -77,7 +78,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onGetStarted }) => {
     setLoading(true);
     setMessage('');
 
-    const result = loginUser(email, password);
+    const result = await loginUser(email, password);
     if (result.success) {
       setMessage('✅ Login successful! Redirecting...');
       setTimeout(() => {

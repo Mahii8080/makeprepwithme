@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Subject, ChatMessage, Feedback, Difficulty } from '../types';
-import { generateQuestion, evaluateAnswer } from '../services/geminiService';
+import { generateQuestion, evaluateAnswer, askCustomQuestion } from '../services/geminiService';
 import { updateProfileOnSessionEnd, getProfileData } from '../services/profileService';
 import { getCurrentUser } from '../services/authService';
 import { Avatar, AvatarState } from './Avatar';
@@ -45,7 +45,10 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
   const [usePhotoMode, setUsePhotoMode] = useState(false);
   const [prefetchedQuestion, setPrefetchedQuestion] = useState<string | null>(null);
   const [isPrefetching, setIsPrefetching] = useState(false);
-
+  
+  // Final summary states
+  const [isEndingSession, setIsEndingSession] = useState(false);
+  const [finalFeedback, setFinalFeedback] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);       // mirror of isListening for use inside recognition callbacks
@@ -341,7 +344,7 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     setIsLoading(false);
     setShowNextQuestionButton(false);
     
-    // AI speaks question
+    // AI Speaks Question
     await speak(question);
 
     // Auto-start microphone after AI finishes speaking
@@ -439,14 +442,25 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
     }
   }, []);
 
-  const handleEndSessionClick = () => {
+  const handleEndSessionClick = async () => {
+    window.speechSynthesis.cancel();
+    stopListening();
+    if (videoRef.current?.stop) {
+      videoRef.current.stop();
+    }
+
+    if (sessionScores.current.length === 0) {
+      onEndSession();
+      return;
+    }
+
+    setIsEndingSession(true);
+
     const avgScore = sessionScores.current.length > 0 
       ? sessionScores.current.reduce((a, b) => a + b, 0) / sessionScores.current.length 
       : 0;
 
-    if (sessionScores.current.length > 0) {
-      updateProfileOnSessionEnd(subject, avgScore, sessionScores.current.length);
-    }
+    updateProfileOnSessionEnd(subject, avgScore, sessionScores.current.length);
     
     // Notify backend
     if (sessionIdRef.current) {
@@ -457,13 +471,51 @@ const InterviewSessionScreen: React.FC<InterviewSessionScreenProps> = ({ subject
         }).catch(e => console.warn('Failed to notify backend session end:', e));
     }
 
-    window.speechSynthesis.cancel();
-    stopListening();
-    if (videoRef.current?.stop) {
-      videoRef.current.stop();
+    try {
+       setAvatarState('thinking');
+       const summary = await askCustomQuestion(`The candidate just completed a practice interview on ${subject}. They answered ${sessionScores.current.length} questions, with an average score of ${avgScore.toFixed(1)}/10. Provide a 2-sentence encouraging overall feedback summarizing their performance.`, subject, difficulty);
+       setFinalFeedback(summary);
+       setAvatarState('happy');
+       speak(summary);
+    } catch {
+       onEndSession();
     }
-    onEndSession();
   };
+
+  // ── FINAL SUMMARY LAYOUT ──────────────────────────────────────────────────
+  if (isEndingSession) {
+    return (
+      <div className="flex flex-col h-screen bg-black items-center justify-center p-4 relative overflow-hidden">
+        {/* Decorative background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 to-purple-900/20" />
+        
+        <div className="bg-gray-800/80 backdrop-blur-xl p-8 rounded-2xl max-w-lg w-full text-center shadow-2xl border border-gray-700 relative z-10">
+           <h2 className="text-3xl font-extrabold text-white mb-2">Session Complete!</h2>
+           <p className="text-gray-400 mb-8">You answered {sessionScores.current.length} questions.</p>
+           
+           {!finalFeedback ? (
+             <div className="flex flex-col items-center">
+                 <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                 <div className="text-blue-400 animate-pulse font-medium">Analyzing your overall performance and preparing final feedback...</div>
+             </div>
+           ) : (
+             <div className="animate-fade-in-up">
+               <div className="bg-black/40 rounded-xl p-5 border border-gray-600 mb-8">
+                  <h3 className="text-sm uppercase tracking-widest text-blue-300 font-bold mb-3">AI Coach Feedback</h3>
+                  <p className="text-gray-200 text-lg leading-relaxed italic">"{finalFeedback}"</p>
+               </div>
+               <button 
+                  onClick={() => onEndSession()} 
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full transition-all shadow-lg hover:shadow-blue-500/50 w-full transform hover:scale-[1.02]"
+                >
+                 Return to Dashboard
+               </button>
+             </div>
+           )}
+        </div>
+      </div>
+    );
+  }
 
   // ── Shared mic button ─────────────────────────────────────────────────────
   const MicButton = ({ large = false }: { large?: boolean }) => (

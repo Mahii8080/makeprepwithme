@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { analyzeResumeFile } from '../services/geminiService';
-import { updateResume, getProfileData } from '../services/profileService';
+import { updateResume, getProfileDataSync } from '../services/profileService';
 import { Subject, Difficulty } from '../types';
 
 interface ResumeScannerScreenProps {
@@ -10,7 +10,7 @@ interface ResumeScannerScreenProps {
 
 export const ResumeScannerScreen: React.FC<ResumeScannerScreenProps> = ({ onBack, onStartInterview }) => {
     const [isProcessing, setIsProcessing] = useState(false);
-    const [extractedText, setExtractedText] = useState<string | null>(getProfileData().resumeText || null);
+    const [extractedText, setExtractedText] = useState<string | null>(getProfileDataSync().resumeText || null);
     const [error, setError] = useState<string | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -39,12 +39,14 @@ export const ResumeScannerScreen: React.FC<ResumeScannerScreenProps> = ({ onBack
         reader.onload = async (e) => {
             try {
                 const result = e.target?.result as string;
-                const base64Data = result.split(',')[1];
+                // Extract base64 data without the data URI scheme prefix
+                const base64Data = result.includes(',') ? result.split(',')[1] : result;
 
                 // Process through AI
                 const analysis = await analyzeResumeFile(base64Data, file.type);
                 setExtractedText(analysis);
-                updateResume(analysis);
+                // Note: updateResume is now async, await it
+                await updateResume(analysis);
 
             } catch (err: any) {
                 console.error("Resume parsing error:", err);

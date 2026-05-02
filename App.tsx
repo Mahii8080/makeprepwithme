@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import LoginScreen from './components/LoginScreen';
 import DashboardScreen from './components/DashboardScreen';
@@ -6,20 +5,29 @@ import InterviewSessionScreen from './components/InterviewSessionScreen';
 import ProfileScreen from './components/ProfileScreen';
 import ResumeScannerScreen from './components/ResumeScannerScreen';
 import { Subject, View, Difficulty } from './types';
-import { isLoggedIn } from './services/authService';
+import { subscribeToAuthChanges } from './services/authService';
+import { seedQuestionsToFirestore } from './services/questionBankService';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('login');
   const [currentSubject, setCurrentSubject] = useState<Subject | string | null>(null);
   const [currentDifficulty, setCurrentDifficulty] = useState<Difficulty | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(isLoggedIn());
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  // Listen to Firebase auth state — runs seeder once user is logged in
   useEffect(() => {
-
-    if (isLoggedIn()) {
-      setIsAuthenticated(true);
-      setView('dashboard');
-    }
+    const unsub = subscribeToAuthChanges(user => {
+      if (user) {
+        setIsAuthenticated(true);
+        setView('dashboard');
+        // Seed Firestore question bank (no-op if already seeded)
+        seedQuestionsToFirestore().catch(console.warn);
+      } else {
+        setIsAuthenticated(false);
+        setView('login');
+      }
+    });
+    return unsub;
   }, []);
 
   const handleStartInterview = useCallback((subject: Subject | string, difficulty: Difficulty) => {
